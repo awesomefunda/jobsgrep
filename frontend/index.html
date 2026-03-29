@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobsGrep</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<header>
+  <span class="logo">⚡ JobsGrep</span>
+  <span class="mode-badge">LOCAL</span>
+</header>
+
+<main>
+
+  <!-- Search card -->
+  <div class="search-card">
+    <h1>Find your next role</h1>
+    <p>Describe the job you're looking for in plain English. JobsGrep searches Greenhouse, Lever, Ashby, Google Jobs, HN Who's Hiring, YC companies, and more.</p>
+
+    <textarea id="query" rows="3" autofocus></textarea>
+
+    <div class="row">
+      <button id="search-btn">Search →</button>
+    </div>
+    <div style="margin-top:0.6rem; font-size:0.78rem; color:var(--muted)">
+      Tip: press Ctrl+Enter to search
+    </div>
+  </div>
+
+  <!-- Search history (hidden when empty) -->
+  <div id="history-panel" style="display:none; width:100%">
+    <div class="history-header">
+      <span class="history-title">Recent searches</span>
+      <button id="clear-history-btn" class="history-clear">Clear</button>
+    </div>
+    <div id="history-list"></div>
+  </div>
+
+  <!-- Progress panel (hidden until search starts) -->
+  <div id="progress-panel">
+    <div class="progress-header">
+      <div class="progress-title">
+        <span class="pulse-dot"></span>
+        <span id="progress-stage-label">Starting…</span>
+      </div>
+      <div class="progress-meta">
+        <span id="jobs-live-count" style="display:none">
+          <span id="jobs-count-num">0</span> jobs found
+        </span>
+        <span class="progress-elapsed" id="elapsed">0s</span>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrap"><div class="progress-bar"></div></div>
+
+    <div class="stage-steps">
+      <div class="stage-step" data-stage="parsing">
+        <div class="step-icon">1</div>
+        <div class="step-body">
+          <div class="step-label">Parsing query</div>
+          <div class="step-detail">Understanding your requirements with AI</div>
+        </div>
+      </div>
+      <div class="stage-step" data-stage="searching">
+        <div class="step-icon">2</div>
+        <div class="step-body">
+          <div class="step-label">Searching sources</div>
+          <div class="step-detail" id="searching-detail">Querying job boards in parallel…</div>
+        </div>
+      </div>
+      <div class="stage-step" data-stage="scoring">
+        <div class="step-icon">3</div>
+        <div class="step-body">
+          <div class="step-label">Scoring matches</div>
+          <div class="step-detail" id="scoring-detail">LLM evaluating fit for each job…</div>
+        </div>
+      </div>
+      <div class="stage-step" data-stage="reporting">
+        <div class="step-icon">4</div>
+        <div class="step-body">
+          <div class="step-label">Building report</div>
+          <div class="step-detail">Generating your Excel file</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="source-chips" id="source-chips"></div>
+    <div class="progress-hint">This usually takes 1–3 minutes depending on the number of matching companies.</div>
+  </div>
+
+  <!-- Results panel (hidden until complete) -->
+  <div id="results-panel">
+    <div class="results-header">
+      <div>
+        <h2>Results</h2>
+        <div id="results-summary" style="font-size:0.85rem; color:var(--muted); margin-top:2px;"></div>
+      </div>
+      <a id="download-btn" class="download-btn" href="#" download style="display:none">
+        ⬇ Download Excel Report
+      </a>
+    </div>
+
+    <table class="jobs-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Score</th>
+          <th>Company</th>
+          <th>Title</th>
+          <th>Source</th>
+        </tr>
+      </thead>
+      <tbody id="jobs-body">
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<footer>
+  Data sourced from public APIs: <span id="footer-sources">Greenhouse, Lever, Ashby, HN, YC</span>.
+  No scraping in this mode unless LOCAL. &nbsp;|&nbsp;
+  <a href="/docs">API Docs</a> &nbsp;|&nbsp;
+  <a href="/api/health">Health</a> &nbsp;|&nbsp;
+  <a href="https://github.com/awesomefanda" target="_blank">GitHub</a>
+</footer>
+
+<div id="toast"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

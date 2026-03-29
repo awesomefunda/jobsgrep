@@ -1,0 +1,19 @@
+{
+  "_comment": "Common ATS slug patterns to try when probing a company. Ordered by likelihood.",
+  "patterns": [
+    "{name}",
+    "{name-hyphenated}",
+    "{name-nospace}",
+    "{name}io",
+    "{name-hyphenated}-inc",
+    "{name-nospace}hq"
+  ],
+  "known_exclusions": [
+    "careers",
+    "jobs",
+    "hiring",
+    "talent",
+    "work",
+    "team"
+  ]
+}

@@ -1,0 +1,29 @@
+services:
+  jobsgrep:
+    build: .
+    ports:
+      - "${PORT:-8080}:8080"
+    env_file:
+      - .env
+    volumes:
+      # Persist ATS mapping cache and audit log across restarts
+      - jobsgrep_data:/root/.jobsgrep
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Redis for rate limiting in PUBLIC/PRIVATE modes
+  # Uncomment if REDIS_URL=redis://redis:6379 is set in .env
+  # redis:
+  #   image: redis:7-alpine
+  #   volumes:
+  #     - redis_data:/data
+  #   restart: unless-stopped
+
+volumes:
+  jobsgrep_data:
+  # redis_data:
