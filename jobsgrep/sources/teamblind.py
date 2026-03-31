@@ -106,7 +106,7 @@ def _encrypted_fetch_sync(path: str, client_headers: dict) -> dict | None:
             timeout=20,
         )
         if resp.status_code != 200:
-            logger.debug("teamblind %s → HTTP %d", path, resp.status_code)
+            logger.debug("teamblind %s -> HTTP %d", path, resp.status_code)
             return None
         inner = json.loads(resp.text)
         return json.loads(_sjcl_decrypt(hex_key, inner))

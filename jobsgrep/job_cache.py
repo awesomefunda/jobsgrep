@@ -113,7 +113,7 @@ def store(key: str, jobs: list[RawJob], source: str = "live_search", label: str 
     _mem[key] = entry
     try:
         _entry_path(key).write_text(json.dumps(entry), encoding="utf-8")
-        logger.info("cached %d jobs → %s (source=%s)", len(jobs), key, source)
+        logger.info("cached %d jobs -> %s (source=%s)", len(jobs), key, source)
     except OSError as e:
         logger.warning("cache write failed: %s", e)
 
@@ -228,7 +228,7 @@ def store_scored(key: str, jobs: "list", source: str = "prefetch", label: str = 
     try:
         path = _scored_dir() / f"{key}.json"
         path.write_text(json.dumps(entry), encoding="utf-8")
-        logger.info("scored cache stored: %d jobs → %s (source=%s)", len(jobs), key, source)
+        logger.info("scored cache stored: %d jobs -> %s (source=%s)", len(jobs), key, source)
     except OSError as e:
         logger.warning("scored cache write failed: %s", e)
 
