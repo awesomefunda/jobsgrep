@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.jobsgrep/
+logs/
+data/reports/
+data/job_cache/
+data/scored_cache/
+*.egg-info/
+.pytest_cache/
+tests/
+scripts/

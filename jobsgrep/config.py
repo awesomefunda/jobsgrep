@@ -5,6 +5,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .models import DataSourceMeta, DataSourceType, DeployMode, RateLimit
@@ -35,7 +36,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8080
     redis_url: str = ""
-    cache_ttl: int = 3600            # 0 = disabled
+    cache_ttl: int = 6 * 3600         # raw job cache TTL (6h); 0 = disabled
+    scored_cache_ttl: int = 24 * 3600 # scored results TTL (24h) — survives overnight
     public_file_ttl: int = 3600
 
     # Logging
@@ -50,7 +52,18 @@ class Settings(BaseSettings):
     push_token: str = ""
 
     # Data paths
-    data_dir: Path = Path.home() / ".jobsgrep"
+    # Auto-switch to /tmp on Vercel (filesystem is read-only except /tmp)
+    data_dir: Path = (
+        Path("/tmp/jobsgrep") if os.environ.get("VERCEL") else Path.home() / ".jobsgrep"
+    )
+
+    @field_validator("groq_api_key", "gemini_api_key", "jobsgrep_access_token", "usajobs_api_key", "push_token", mode="before")
+    @classmethod
+    def strip_api_keys(cls, v):
+        """Strip whitespace from API keys and tokens to prevent 401 errors."""
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
     @property
     def is_local(self) -> bool:
@@ -74,10 +87,17 @@ class Settings(BaseSettings):
 
     @property
     def effective_cache_ttl(self) -> int:
-        """PUBLIC mode never caches."""
+        """PUBLIC mode never caches raw jobs."""
         if self.jobsgrep_mode == DeployMode.PUBLIC:
             return 0
         return self.cache_ttl
+
+    @property
+    def effective_scored_cache_ttl(self) -> int:
+        """PUBLIC mode never caches scored results."""
+        if self.jobsgrep_mode == DeployMode.PUBLIC:
+            return 0
+        return self.scored_cache_ttl
 
 
 @lru_cache(maxsize=1)

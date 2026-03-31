@@ -17,6 +17,7 @@ import base64
 import json
 import logging
 import os
+from urllib.parse import quote as _url_quote
 
 from ..models import DataSourceType, ParsedQuery, RawJob
 from .base import BaseSource, job_id
@@ -134,7 +135,7 @@ class TeamBlindSource(BaseSource):
         for term in search_terms:
             for page in range(4):
                 offset = page * _JOBS_PER_PAGE
-                params = f"searchKeyword={__import__('urllib.parse', fromlist=['']).parse.quote(term)}&page={page}&offset={offset}"
+                params = f"searchKeyword={_url_quote(term)}&page={page}&offset={offset}"
                 if query.remote_ok:
                     params += "&remoteOnly=true"
 

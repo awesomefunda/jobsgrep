@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -73,6 +73,39 @@ _task_lock = asyncio.Lock()
 _REPORTS_DIR = Path.home() / ".jobsgrep" / "reports"
 
 
+def _load_seed_cache() -> None:
+    """Copy bundled seed data (data/seed/) into the active cache directories.
+
+    On Vercel every cold start begins with an empty /tmp. This function ensures
+    pre-scored job data is immediately available without any API calls.
+    On non-Vercel deployments it also seeds an empty cache on first run.
+    """
+    import shutil
+    seed_dir = Path(__file__).parent.parent / "data" / "seed"
+    if not seed_dir.exists():
+        return
+
+    from .job_cache import _cache_dir, _scored_dir
+    scored = _scored_dir()
+    raw    = _cache_dir()
+
+    seeded = 0
+    for src in seed_dir.glob("scored__*.json"):
+        dst = scored / src.name.replace("scored__", "")
+        if not dst.exists():
+            shutil.copy(src, dst)
+            seeded += 1
+
+    for src in seed_dir.glob("raw__*.json"):
+        dst = raw / src.name.replace("raw__", "")
+        if not dst.exists():
+            shutil.copy(src, dst)
+            seeded += 1
+
+    if seeded:
+        logger.info("seeded %d cache file(s) from data/seed/", seeded)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -89,9 +122,13 @@ async def lifespan(app: FastAPI):
     logger.info("JobsGrep starting in %s mode on %s:%s",
                 settings.jobsgrep_mode.value, settings.host, settings.port)
 
-    # Start background prefetch in server modes
+    # Load bundled seed data into cache (Vercel cold start or any empty cache)
+    _load_seed_cache()
+
+    # Start background prefetch in non-Vercel server modes
+    import os as _os
     prefetch_task = None
-    if not settings.is_local and settings.prefetch_on_startup:
+    if not settings.is_local and settings.prefetch_on_startup and not _os.environ.get("VERCEL"):
         from .prefetch import start_prefetch_loop
         queries = (
             [q.strip() for q in settings.prefetch_queries.split(",") if q.strip()]
@@ -175,24 +212,57 @@ async def _run_search(task_id: str, query: str, resume_text: str | None) -> None
         parsed = await parse_query(query, resume_text)
         task.parsed_query = parsed
 
-        # Phase 1: check cache first
-        from .job_cache import cache_key as _cache_key, get as _cache_get, store as _cache_store
+        from .job_cache import (
+            cache_key as _cache_key,
+            get as _cache_get,
+            store as _cache_store,
+            get_scored as _get_scored,
+        )
         _ck = _cache_key(parsed)
+
+        # ── Phase 1a: scored cache hit → skip sources AND LLM entirely ──────
+        pre_scored = _get_scored(_ck)
+        if pre_scored is not None:
+            logger.info("scored cache hit for task %s: %d jobs", task_id, len(pre_scored))
+            task.total_jobs_found = len(pre_scored)
+            task.total_jobs_scored = len(pre_scored)
+            task.sources_searched = ["scored_cache"]
+            task.jobs_per_source = {"scored_cache": len(pre_scored)}
+
+            await update(TaskStatus.REPORTING, "Building report from pre-scored results...")
+            task.completed_at = datetime.now(timezone.utc)
+            from .report.excel import generate_report
+            report_path = generate_report(pre_scored, task, _REPORTS_DIR)
+            task.download_url = f"/api/download/{task_id}"
+
+            from .history import record_search
+            record_search(query, task.total_jobs_found, len(pre_scored), task.sources_searched)
+
+            task.status = TaskStatus.COMPLETE
+            task.progress_message = f"Done! Found {len(pre_scored)} matching jobs (instant)."
+            _tasks[task_id]._report_path = str(report_path)  # type: ignore[attr-defined]
+            return
+
+        # ── Phase 1b: raw job cache hit → score only (no source calls) ──────
         cached_jobs = _cache_get(_ck)
         if cached_jobs is not None:
-            logger.info("cache hit for task %s: %d jobs", task_id, len(cached_jobs))
+            logger.info("raw cache hit for task %s: %d jobs", task_id, len(cached_jobs))
             task.total_jobs_found = len(cached_jobs)
-            task.sources_searched = ["cache"]
-            task.jobs_per_source = {"cache": len(cached_jobs)}
-            all_jobs = cached_jobs
-            # Jump straight to scoring
-            await update(TaskStatus.SCORING, f"Scoring {len(all_jobs)} cached jobs...")
+            task.sources_searched = ["job_cache"]
+            task.jobs_per_source = {"job_cache": len(cached_jobs)}
+
+            await update(TaskStatus.SCORING, f"Scoring {len(cached_jobs)} cached jobs...")
 
             async def progress_cb_cached(msg: str) -> None:
                 task.progress_message = msg
 
-            scored = await score_jobs(all_jobs, parsed, progress_cb=progress_cb_cached)
+            scored = await score_jobs(cached_jobs, parsed, progress_cb=progress_cb_cached)
             task.total_jobs_scored = len(scored)
+
+            # Persist scored results so next hit is instant
+            from .job_cache import store_scored as _store_scored
+            if scored:
+                _store_scored(_ck, scored, source="live_search", label=query)
 
             await update(TaskStatus.REPORTING, "Generating Excel report...")
             task.completed_at = datetime.now(timezone.utc)
@@ -204,10 +274,11 @@ async def _run_search(task_id: str, query: str, resume_text: str | None) -> None
             record_search(query, task.total_jobs_found, len(scored), task.sources_searched)
 
             task.status = TaskStatus.COMPLETE
-            task.progress_message = f"Done! Found {len(scored)} matching jobs (from cache)."
+            task.progress_message = f"Done! Found {len(scored)} matching jobs."
             _tasks[task_id]._report_path = str(report_path)  # type: ignore[attr-defined]
             return
 
+        # ── Phase 1c: live search (cache miss) ────────────────────────────────
         # Phase 1: search all enabled sources in parallel
         await update(TaskStatus.SEARCHING, "Searching job sources...")
         enabled = get_enabled_sources()
@@ -281,6 +352,11 @@ async def _run_search(task_id: str, query: str, resume_text: str | None) -> None
 
         scored = await score_jobs(all_jobs, parsed, progress_cb=progress_cb)
         task.total_jobs_scored = len(scored)
+
+        # Cache scored results so next user with same query gets instant results
+        if scored:
+            from .job_cache import store_scored as _store_scored
+            _store_scored(_ck, scored, source="live_search", label=query)
 
         # Phase 3: generate report
         await update(TaskStatus.REPORTING, "Generating Excel report...")
@@ -496,14 +572,45 @@ async def import_jobs(body: ImportRequest, request: Request):
 
 @app.get("/api/cache")
 async def list_cache(user: AuthDep):
-    """List all cache entries with metadata."""
-    from .job_cache import list_entries
-    return list_entries()
+    """List raw and scored cache entries with metadata."""
+    from .job_cache import list_entries, _scored_dir
+    import json, time as _time
+    raw = list_entries()
+    scored = []
+    for path in _scored_dir().glob("*.json"):
+        try:
+            e = json.loads(path.read_text(encoding="utf-8"))
+            scored.append({
+                "key":       e.get("key", path.stem),
+                "label":     e.get("label", ""),
+                "source":    e.get("source", ""),
+                "job_count": e.get("job_count", 0),
+                "stored_at": e.get("stored_at", 0),
+                "age_hours": round((_time.time() - e.get("stored_at", 0)) / 3600, 1),
+            })
+        except Exception:
+            pass
+    scored.sort(key=lambda x: x["stored_at"], reverse=True)
+    return {"raw": raw, "scored": scored}
 
 
 @app.delete("/api/cache")
 async def clear_cache(user: AuthDep):
-    """Evict all expired cache entries."""
+    """Evict all expired cache entries (raw + scored)."""
     from .job_cache import evict_expired
     removed = evict_expired()
     return {"evicted": removed}
+
+
+@app.post("/api/prefetch")
+async def trigger_prefetch(user: AuthDep):
+    """Manually trigger a prefetch cycle (runs in background)."""
+    from .config import get_settings
+    settings = get_settings()
+    from .prefetch import run_prefetch_cycle, _DEFAULT_QUERIES
+    queries = (
+        [q.strip() for q in settings.prefetch_queries.split(",") if q.strip()]
+        if settings.prefetch_queries else _DEFAULT_QUERIES
+    )
+    asyncio.create_task(run_prefetch_cycle(queries, stagger_seconds=20.0))
+    return {"status": "started", "queries": queries}

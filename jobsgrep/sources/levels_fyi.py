@@ -115,6 +115,14 @@ class LevelsFYISource(BaseSource):
         logger.info("levels.fyi: %d jobs from %d search terms", len(jobs), len(search_terms))
         return jobs
 
+    # levels.fyi requires browser-like headers — rejects generic User-Agents
+    _LEVELS_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json, */*",
+        "Referer": "https://www.levels.fyi/",
+        "Origin": "https://www.levels.fyi",
+    }
+
     async def _api_search(
         self,
         search_text: str,
@@ -135,15 +143,21 @@ class LevelsFYISource(BaseSource):
             params.append(("workArrangements[]", wa))
 
         try:
-            resp = await self._get(_API_URL, params=params)
+            resp = await self.client.get(
+                _API_URL,
+                params=params,
+                headers=self._LEVELS_HEADERS,
+            )
             if resp.status_code != 200:
+                logger.warning("levels.fyi API returned HTTP %d", resp.status_code)
                 return [], 0
             data = resp.json()
             payload = data.get("payload", "")
             if not payload:
+                logger.warning("levels.fyi: empty payload in response (API may have changed)")
                 return [], 0
             decoded = await asyncio.get_event_loop().run_in_executor(None, _decrypt, payload)
             return decoded.get("results", []), decoded.get("totalMatchingJobs", 0)
         except Exception as e:
-            logger.debug("levels.fyi api error: %s", e)
+            logger.warning("levels.fyi api error: %s", e)
             return [], 0

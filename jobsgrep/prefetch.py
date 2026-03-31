@@ -1,20 +1,24 @@
-"""Background prefetch worker — pre-warms the job cache for common searches.
+"""Background prefetch + pre-score worker.
 
-Runs on server startup (after a short delay) and then periodically.
-Only active in PRIVATE/PUBLIC modes where remote users benefit from warm cache.
-LOCAL mode skips prefetch since the user runs their own searches.
+For each configured query this worker:
+  1. Checks the scored cache → if fresh, skip entirely (zero API calls)
+  2. Checks the raw job cache → if fresh, score from cache (no source calls)
+  3. Otherwise: fetch from all enabled sources, score via LLM, store both caches
+
+This means the first user to search "Software Engineer" after a prefetch cycle
+gets a fully-scored Excel report with zero waiting on sources or LLM.
+
+Only runs in PRIVATE/PUBLIC modes (LOCAL users run their own searches).
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger("jobsgrep.prefetch")
 
+# Queries to pre-warm on startup. The first entry ("Software Engineer") is
+# scored immediately; the rest are staggered to spread API load.
 _DEFAULT_QUERIES = [
     "Software Engineer",
     "Senior Software Engineer",
@@ -29,11 +33,13 @@ _DEFAULT_QUERIES = [
 ]
 
 
-async def _prefetch_query(query: str) -> int:
-    """Run a single prefetch search and store results in cache. Returns job count."""
-    from .job_cache import cache_key, get, store
+async def _prefetch_query(query: str) -> tuple[int, int]:
+    """Fetch + score one query. Returns (raw_job_count, scored_job_count)."""
+    from .job_cache import cache_key, get as cache_get, store as cache_store
+    from .job_cache import get_scored, store_scored
     from .nlp.parser import parse_query
     from .config import get_settings, get_enabled_sources
+    from .scoring.engine import score_jobs
     from .sources.greenhouse import GreenhouseSource
     from .sources.lever import LeverSource
     from .sources.ashby import AshbySource
@@ -44,13 +50,23 @@ async def _prefetch_query(query: str) -> int:
     parsed = await parse_query(query, None)
     key = cache_key(parsed)
 
-    # Skip if already cached and fresh
-    cached = get(key)
-    if cached is not None:
-        logger.info("prefetch skip (cache hit): %s — %d jobs", query, len(cached))
-        return len(cached)
+    # ── 1. Check scored cache first (skip everything if warm) ──────────────
+    scored = get_scored(key)
+    if scored is not None:
+        logger.info("prefetch skip (scored cache hit): '%s' — %d scored jobs", query, len(scored))
+        return len(scored), len(scored)
 
-    logger.info("prefetch start: %s", query)
+    # ── 2. Raw job cache hit → score only ──────────────────────────────────
+    raw_jobs = cache_get(key)
+    if raw_jobs is not None:
+        logger.info("prefetch: raw cache hit '%s' (%d jobs), scoring...", query, len(raw_jobs))
+        scored = await score_jobs(raw_jobs, parsed)
+        if scored:
+            store_scored(key, scored, source="prefetch", label=query)
+        return len(raw_jobs), len(scored)
+
+    # ── 3. Full fetch + score ───────────────────────────────────────────────
+    logger.info("prefetch fetch+score: '%s'", query)
     settings = get_settings()
     enabled = get_enabled_sources()
 
@@ -86,53 +102,57 @@ async def _prefetch_query(query: str) -> int:
     for source in source_map.values():
         await source.close()
 
-    if all_jobs:
-        store(key, all_jobs, source="prefetch", label=query)
-        logger.info("prefetch complete: '%s' — %d jobs cached", query, len(all_jobs))
+    if not all_jobs:
+        logger.warning("prefetch: no jobs found for '%s'", query)
+        return 0, 0
 
-    return len(all_jobs)
+    # Store raw jobs
+    cache_store(key, all_jobs, source="prefetch", label=query)
+    logger.info("prefetch: fetched %d jobs for '%s', scoring...", len(all_jobs), query)
+
+    # Score and store
+    scored = await score_jobs(all_jobs, parsed)
+    if scored:
+        store_scored(key, scored, source="prefetch", label=query)
+
+    logger.info("prefetch done: '%s' — %d raw, %d scored", query, len(all_jobs), len(scored))
+    return len(all_jobs), len(scored)
 
 
-async def run_prefetch_cycle(queries: list[str], stagger_seconds: float = 30.0) -> None:
-    """Run one full prefetch cycle over the given queries, staggered to avoid hammering APIs."""
+async def run_prefetch_cycle(queries: list[str], stagger_seconds: float = 20.0) -> None:
+    """Run one full prefetch cycle, staggered to be polite to source APIs."""
     logger.info("prefetch cycle starting: %d queries", len(queries))
-    for query in queries:
+    for i, query in enumerate(queries):
         try:
-            count = await _prefetch_query(query)
-            logger.debug("prefetch '%s' done: %d jobs", query, count)
+            raw, scored = await _prefetch_query(query)
+            logger.debug("prefetch '%s': %d raw, %d scored", query, raw, scored)
         except Exception as e:
             logger.warning("prefetch '%s' error: %s", query, e)
-        # Stagger requests to be polite to source APIs
-        await asyncio.sleep(stagger_seconds)
+        # Don't stagger before the first query — get it warm ASAP
+        if i < len(queries) - 1:
+            await asyncio.sleep(stagger_seconds)
     logger.info("prefetch cycle complete")
 
 
-async def start_prefetch_loop(queries: list[str] | None = None,
-                               interval_hours: float = 6.0,
-                               startup_delay_seconds: float = 30.0) -> None:
-    """
-    Long-running asyncio task. Runs one prefetch cycle on startup (after delay),
-    then repeats every `interval_hours`.
-
-    Wire into FastAPI lifespan as:
-        asyncio.create_task(start_prefetch_loop(...))
-    """
+async def start_prefetch_loop(
+    queries: list[str] | None = None,
+    interval_hours: float = 6.0,
+    startup_delay_seconds: float = 15.0,
+) -> None:
+    """Long-running asyncio task. Wire into FastAPI lifespan."""
     from .config import get_settings
     settings = get_settings()
 
-    # Prefetch only makes sense in server modes
     if settings.is_local:
         logger.debug("prefetch disabled in LOCAL mode")
         return
 
     effective_queries = queries or _DEFAULT_QUERIES
-
     logger.info(
         "prefetch worker starting: %d queries, interval=%.1fh, startup delay=%.0fs",
         len(effective_queries), interval_hours, startup_delay_seconds,
     )
 
-    # Wait a bit for the server to finish startup before hammering APIs
     await asyncio.sleep(startup_delay_seconds)
 
     while True:

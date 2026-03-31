@@ -40,6 +40,20 @@ def main() -> None:
     p_add.add_argument("ats", choices=["greenhouse", "lever", "ashby", "recruitee", "workable"])
     p_add.add_argument("slug")
 
+    # run-prefetch
+    p_prefetch = sub.add_parser(
+        "run-prefetch",
+        help="Fetch + score jobs for common queries and populate the local cache",
+    )
+    p_prefetch.add_argument(
+        "--queries", default="",
+        help="Comma-separated override (default: built-in 10-query list)",
+    )
+    p_prefetch.add_argument(
+        "--first-only", action="store_true",
+        help="Only warm up 'Software Engineer' — fastest initial run",
+    )
+
     # push
     p_push = sub.add_parser(
         "push",
@@ -78,6 +92,8 @@ def main() -> None:
         asyncio.run(_cmd_health())
     elif args.command == "add-company":
         _cmd_add_company(args)
+    elif args.command == "run-prefetch":
+        asyncio.run(_cmd_run_prefetch(args))
     elif args.command == "push":
         asyncio.run(_cmd_push(args))
 
@@ -160,6 +176,26 @@ async def _cmd_health() -> None:
             icon = "✓" if status == "OK" else "✗"
             print(f"  {icon} {name:<20} {status}")
     print()
+
+
+async def _cmd_run_prefetch(args) -> None:
+    """Fetch + score jobs for common queries and write to local cache."""
+    from .prefetch import run_prefetch_cycle, _DEFAULT_QUERIES
+
+    if args.first_only:
+        queries = ["Software Engineer"]
+    elif args.queries:
+        queries = [q.strip() for q in args.queries.split(",") if q.strip()]
+    else:
+        queries = _DEFAULT_QUERIES
+
+    print(f"\nPrefetching {len(queries)} quer{'y' if len(queries)==1 else 'ies'}:")
+    for q in queries:
+        print(f"  · {q}")
+    print()
+
+    await run_prefetch_cycle(queries, stagger_seconds=20.0)
+    print("\nDone. Run 'jobsgrep push' to upload results to a remote server.")
 
 
 def _cmd_add_company(args) -> None:

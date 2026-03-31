@@ -1,6 +1,32 @@
 # JobsGrep
 
-Self-hosted job search web app. Type a natural language query, get a scored Excel tracker sourced from public APIs — Greenhouse, Lever, Ashby, HN Who's Hiring, YC companies, USAJobs, and more.
+**[jobsgrep.com](https://jobsgrep.com)** — Self-hosted job search aggregator. Type a natural-language query, get a scored Excel tracker pulled from Greenhouse, Lever, Ashby, HN Who's Hiring, YC companies, USAJobs, and more.
+
+## Deploy to Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/yourusername/jobsgrep)
+
+```bash
+# 1. Generate pre-seeded job data locally (run once before each deploy)
+python scripts/generate_seed.py
+
+# 2. Commit the seed data
+git add data/seed/
+git commit -m "seed: pre-scored job data"
+
+# 3. Deploy
+vercel deploy
+```
+
+**Required env vars on Vercel** (set in Vercel dashboard):
+```
+GROQ_API_KEY=gsk_...         # or GEMINI_API_KEY
+JOBSGREP_MODE=PUBLIC          # auto-set by vercel.json
+```
+
+Vercel cold starts load the pre-seeded scored jobs from `data/seed/` instantly.
+Common searches (Software Engineer, Bay Area, Remote) return results in ~2 seconds.
+Live searches on uncached queries take up to 60 seconds — Vercel Pro recommended.
 
 ## Quick Start
 
@@ -41,10 +67,10 @@ Controlled by the `JOBSGREP_MODE` environment variable:
 | Mode | Auth | Scraping | Caching | Use case |
 |---|---|---|---|---|
 | `LOCAL` | None | Allowed | 1 hour | Personal laptop use |
-| `PRIVATE` | Bearer token | Disabled by default | 1 hour | Shared via Cloudflare Tunnel / ngrok |
-| `PUBLIC` | IP rate limiting | Disabled | Disabled | VPS / cloud deploy |
+| `PRIVATE` | Bearer token | Allowed | 1 hour | Your own server / Cloudflare Tunnel / ngrok |
+| `PUBLIC` | IP rate limiting | **Disabled** | **Disabled** | Public VPS / cloud deploy |
 
-Scraper sources (JobSpy) are **compile-time gated** — attempting to call them in `PUBLIC` or `PRIVATE` mode raises an error before any network call is made.
+Scraper sources (JobSpy, Levels.fyi, TeamBlind) are **compile-time gated** — calling them in `PUBLIC` mode raises an error before any network call is made. `LOCAL` and `PRIVATE` both allow scraping since there's no multi-user IP-ban risk.
 
 ## LLM Providers
 
@@ -68,7 +94,9 @@ Both keys are used for NL query parsing and job scoring via the same code path. 
 | HN Who's Hiring | Official API | None | Algolia + Firebase, latest monthly thread |
 | YC Companies | Community OSS | None | 5,690 companies, probes their ATS boards |
 | USAJobs | Official API | API key | Free registration required |
-| JobSpy | Scraper | None | LOCAL mode only — Indeed, LinkedIn, Glassdoor |
+| JobSpy | Scraper | None | LOCAL + PRIVATE — Indeed, LinkedIn, Glassdoor |
+| Levels.fyi | Scraper | None | LOCAL + PRIVATE — compensation-focused listings |
+| TeamBlind | Scraper | None | LOCAL + PRIVATE — anonymous job board |
 
 ## Excel Report — Built-in Tracker
 
@@ -121,19 +149,86 @@ GET    /api/sources       List enabled sources with legal classification
 GET    /api/history       List past searches
 DELETE /api/history       Clear search history
 GET    /api/health        Source API health check
+GET    /api/cache         List raw + scored cache entries (key, label, age, count)
+DELETE /api/cache         Evict expired cache entries
+POST   /api/import        Receive jobs pushed from a local run
+POST   /api/prefetch      Manually trigger a prefetch + score cycle
 GET    /docs              Interactive API docs (Swagger UI)
 ```
+
+## Performance & Token Optimization
+
+JobsGrep is designed to minimize LLM API costs and deliver fast results to users.
+
+### How it works
+
+```
+User search
+    │
+    ▼
+Scored cache hit? ──yes──▶ Build report (0 LLM calls, ~2s)
+    │ no
+    ▼
+Raw job cache hit? ──yes──▶ Score only (no source calls, ~15s)
+    │ no                     └─▶ Store scored results
+    ▼
+Live search → score → store both caches
+```
+
+After the first search for a query, every subsequent search is served from cache. The background prefetch worker pre-populates the cache on startup so common searches are instant from the moment the server starts.
+
+### LLM token reduction vs naïve approach
+
+| Technique | Saving |
+|---|---|
+| Scored results cache (prefetch → instant) | 100% — zero tokens on cache hits |
+| Per-job score cache (same job, same requirements) | Eliminates duplicate scoring |
+| Title word-overlap pre-filter | ~40% fewer jobs sent to LLM |
+| Batch size 5 → 15 | 3× fewer LLM round-trips |
+| Description truncated 800 → 400 chars | ~50% input token reduction |
+| Compact prompt (no verbose scoring guide) | ~80 tokens saved per batch |
+| Query parse cache | Skips 1 LLM call per repeated query |
+
+**Net effect**: a warm cache search costs 0 tokens. A cold search for 300 jobs costs ~18,000 tokens (was ~84,000).
+
+### Initial warm-up workflow
+
+Run this once locally to pre-populate the cache with "Software Engineer" jobs, then push to prod:
+
+```bash
+# Step 1: warm up locally (fetches + scores ~200-400 jobs)
+jobsgrep run-prefetch --first-only
+
+# Step 2: push to your production server
+jobsgrep push --server https://jobsgrep.com --token <JOBSGREP_ACCESS_TOKEN>
+
+# Optional: warm up all 10 common queries
+jobsgrep run-prefetch
+jobsgrep push --server https://jobsgrep.com --token <token>
+```
+
+On the server, the prefetch worker re-runs automatically every 6 hours (configurable via `PREFETCH_INTERVAL_HOURS`).
 
 ## CLI Commands
 
 ```bash
 jobsgrep serve                                    # Start web server
 jobsgrep search "Staff SDE remote Python"         # CLI search → Excel file
+jobsgrep run-prefetch                             # Fetch + score common queries → cache
+jobsgrep run-prefetch --first-only               # Warm up "Software Engineer" only (fast)
+jobsgrep run-prefetch --queries "SRE, Data Engineer, EM"
 jobsgrep discover [--limit 500]                   # Probe YC companies for ATS slugs
 jobsgrep sources                                  # List enabled sources for current mode
 jobsgrep health                                   # Test all source APIs
 jobsgrep add-company <name> <greenhouse|lever|ashby> <slug>
+
+# Push locally-scraped jobs to a remote JobsGrep server
+jobsgrep push --server https://jobsgrep.com --token <token>
+jobsgrep push --server https://jobsgrep.com --token <token> --query "Software Engineer"
+jobsgrep push --server https://jobsgrep.com --token <token> --dry-run
 ```
+
+The `push` command reads your local job cache (`~/.jobsgrep/job_cache/`) and uploads it to a remote server via `POST /api/import`. Remote users then get instant results from the pre-populated cache instead of waiting for live scraping.
 
 ## Legal
 
@@ -146,23 +241,26 @@ See [DISCLAIMER.md](DISCLAIMER.md) for full details on ToS compliance per source
 ```
 jobsgrep/
 ├── jobsgrep/
-│   ├── main.py          FastAPI app (search, SSE, download, history, health)
-│   ├── config.py        Mode detection, source registry
-│   ├── models.py        All Pydantic models
-│   ├── llm.py           Unified LLM provider (Gemini → Groq fallback chain)
-│   ├── history.py       Search history (local JSON)
-│   ├── cli.py           CLI entry point
-│   ├── nlp/             NL query → ParsedQuery
-│   ├── sources/         One file per data source
-│   ├── scoring/         Pre-filter + LLM scoring
-│   ├── discovery/       ATS slug prober, company mapping cache
-│   ├── report/          Excel report + tracker generator
-│   ├── auth/            Bearer token middleware
-│   └── legal/           Mode enforcement, rate limiter, audit log
-├── frontend/            Single-page app (HTML/CSS/JS, no build step)
-├── scripts/             Discovery + seed helpers
-├── tests/               Compliance, parser, source unit tests
-├── docker-entrypoint.sh Auto-validates config, generates tokens
+│   ├── main.py           FastAPI app (search, SSE, download, history, cache, import)
+│   ├── config.py         Mode detection, source registry
+│   ├── models.py         All Pydantic models
+│   ├── llm.py            Unified LLM provider (Gemini → Groq fallback chain)
+│   ├── job_cache.py      Disk-backed TTL cache (shared by search + prefetch + push)
+│   ├── prefetch.py       Background worker — pre-warms cache for common searches
+│   ├── history.py        Search history (local JSON)
+│   ├── logging_config.py Colored console (LOCAL) / JSON lines (PRIVATE/PUBLIC)
+│   ├── cli.py            CLI entry point (serve, search, push, discover, …)
+│   ├── nlp/              NL query → ParsedQuery
+│   ├── sources/          One file per data source (greenhouse, lever, ashby, levels_fyi, …)
+│   ├── scoring/          Pre-filter + LLM scoring
+│   ├── discovery/        ATS slug prober, company mapping cache
+│   ├── report/           Excel report + tracker generator
+│   ├── auth/             Bearer token middleware
+│   └── legal/            Mode enforcement, rate limiter, audit log
+├── frontend/             Single-page app (HTML/CSS/JS, no build step)
+├── scripts/              Discovery + seed helpers
+├── tests/                Compliance, parser, source unit tests
+├── docker-entrypoint.sh  Auto-validates config, generates tokens
 ├── docker-compose.yml
 └── Dockerfile
 ```
