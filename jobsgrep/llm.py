@@ -40,18 +40,25 @@ async def complete(
 
 async def _gemini(api_key: str, system: str, prompt: str, temperature: float, max_tokens: int) -> str | None:
     try:
-        import google.generativeai as genai  # type: ignore
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        from google import genai  # type: ignore
+        from google.genai import types  # type: ignore
+        client = genai.Client(api_key=api_key)
         full_prompt = f"{system}\n\n{prompt}" if system else prompt
         resp = await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: model.generate_content(
-                full_prompt,
-                generation_config={"temperature": temperature, "max_output_tokens": max_tokens},
+            lambda: client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=full_prompt,
+                config=types.GenerateContentConfig(
+                    temperature=temperature,
+                    max_output_tokens=max_tokens,
+                ),
             ),
         )
         return resp.text
+    except ImportError:
+        logger.debug("google-genai not installed — skipping Gemini")
+        return None
     except Exception as e:
         logger.warning("gemini failed: %s", e)
         return None
