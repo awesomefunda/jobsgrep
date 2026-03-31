@@ -1,4 +1,4 @@
-"""Unified LLM provider interface — Gemini → Groq(70b) → Groq(8b) fallback chain.
+"""Unified LLM provider interface — Claude → Gemini → Groq(70b) → Groq(8b) fallback chain.
 
 Usage:
     from jobsgrep.llm import complete
@@ -12,6 +12,10 @@ import re
 
 logger = logging.getLogger("jobsgrep.llm")
 
+# Circuit breaker: providers that hit non-retryable errors (quota exhausted) are
+# skipped for the rest of the process lifetime to avoid wasting time on every call.
+_dead_providers: set[str] = set()
+
 
 async def complete(
     prompt: str,
@@ -23,18 +27,20 @@ async def complete(
     from .config import get_settings
     settings = get_settings()
 
-    if settings.anthropic_api_key:
+    if settings.anthropic_api_key and "claude" not in _dead_providers:
         result = await _claude(settings.anthropic_api_key, system, prompt, temperature, max_tokens)
         if result:
             return result
 
-    if settings.gemini_api_key:
+    if settings.gemini_api_key and "gemini" not in _dead_providers:
         result = await _gemini(settings.gemini_api_key, system, prompt, temperature, max_tokens)
         if result:
             return result
 
     if settings.groq_api_key:
         for model in ("llama-3.3-70b-versatile", "llama-3.1-8b-instant"):
+            if model in _dead_providers:
+                continue
             result = await _groq(settings.groq_api_key, model, system, prompt, temperature, max_tokens)
             if result:
                 return result
@@ -59,6 +65,7 @@ async def _claude(api_key: str, system: str, prompt: str, temperature: float, ma
         return resp.content[0].text
     except ImportError:
         logger.debug("anthropic not installed — skipping Claude")
+        _dead_providers.add("claude")
         return None
     except Exception as e:
         logger.warning("claude failed: %s", e)
@@ -85,9 +92,18 @@ async def _gemini(api_key: str, system: str, prompt: str, temperature: float, ma
         return resp.text
     except ImportError:
         logger.debug("google-genai not installed — skipping Gemini")
+        _dead_providers.add("gemini")
         return None
     except Exception as e:
-        logger.warning("gemini failed: %s", e)
+        msg = str(e)
+        if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower():
+            if "PerDay" in msg or "per_day" in msg.lower() or "daily" in msg.lower():
+                logger.warning("gemini daily quota exhausted — skipping for this run")
+                _dead_providers.add("gemini")
+            else:
+                logger.warning("gemini rate-limited, trying next provider")
+        else:
+            logger.warning("gemini failed: %s", e)
         return None
 
 
@@ -108,7 +124,7 @@ async def _groq(api_key: str, model: str, system: str, prompt: str, temperature:
         return resp.choices[0].message.content
     except Exception as e:
         msg = str(e).lower()
-        if "rate_limit" in msg:
+        if "rate_limit" in msg or "429" in msg:
             logger.warning("groq %s rate-limited, trying next provider", model)
         else:
             logger.warning("groq %s failed: %s", model, e)
