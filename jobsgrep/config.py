@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     jobsgrep_mode: DeployMode = DeployMode.LOCAL
     groq_api_key: str = ""
     gemini_api_key: str = ""
+    anthropic_api_key: str = ""
     jobsgrep_contact_email: str = "user@example.com"
 
     # Auth

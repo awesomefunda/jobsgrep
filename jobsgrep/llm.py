@@ -23,6 +23,11 @@ async def complete(
     from .config import get_settings
     settings = get_settings()
 
+    if settings.anthropic_api_key:
+        result = await _claude(settings.anthropic_api_key, system, prompt, temperature, max_tokens)
+        if result:
+            return result
+
     if settings.gemini_api_key:
         result = await _gemini(settings.gemini_api_key, system, prompt, temperature, max_tokens)
         if result:
@@ -36,6 +41,28 @@ async def complete(
 
     logger.error("all LLM providers failed — set GEMINI_API_KEY or GROQ_API_KEY")
     return None
+
+
+async def _claude(api_key: str, system: str, prompt: str, temperature: float, max_tokens: int) -> str | None:
+    try:
+        import anthropic  # type: ignore
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        kwargs: dict = dict(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if system:
+            kwargs["system"] = system
+        resp = await client.messages.create(**kwargs)
+        return resp.content[0].text
+    except ImportError:
+        logger.debug("anthropic not installed — skipping Claude")
+        return None
+    except Exception as e:
+        logger.warning("claude failed: %s", e)
+        return None
 
 
 async def _gemini(api_key: str, system: str, prompt: str, temperature: float, max_tokens: int) -> str | None:
