@@ -142,13 +142,16 @@
       return;
     }
 
-    // SSE stream
-    openStream(taskId);
+    // SSE stream — pass query so Vercel can re-run search if cross-instance
+    openStream(taskId, query);
   }
 
-  function openStream(taskId) {
+  function openStream(taskId, query) {
     if (eventSource) eventSource.close();
-    eventSource = new EventSource(`/api/stream/${taskId}`);
+    const streamUrl = query
+      ? `/api/stream/${taskId}?query=${encodeURIComponent(query)}`
+      : `/api/stream/${taskId}`;
+    eventSource = new EventSource(streamUrl);
 
     const stages = ['parsing', 'searching', 'scoring', 'reporting'];
     let stageIdx = 0;

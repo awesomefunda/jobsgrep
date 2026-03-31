@@ -406,7 +406,7 @@ async def index():
 
 @app.post("/api/search", response_model=SearchResponse)
 async def start_search(body: SearchRequest, user: AuthDep, request: Request):
-    """Start a job search. Returns task_id for polling."""
+    """Start a job search. Returns task_id for polling/streaming."""
     settings = get_settings()
 
     # Rate limit check
@@ -422,8 +422,11 @@ async def start_search(body: SearchRequest, user: AuthDep, request: Request):
     async with _task_lock:
         _tasks[task_id] = task
 
-    # Run search in background
-    asyncio.create_task(_run_search(task_id, body.query, body.resume_text))
+    import os as _os
+    if not _os.environ.get("VERCEL"):
+        # Local/PRIVATE: run in background, client polls or streams
+        asyncio.create_task(_run_search(task_id, body.query, body.resume_text))
+    # On Vercel: search is driven by the SSE stream connection (avoids cross-instance state)
 
     return SearchResponse(task_id=task_id, status=TaskStatus.QUEUED)
 
@@ -437,10 +440,34 @@ async def get_status(task_id: str, user: AuthDep):
 
 
 @app.get("/api/stream/{task_id}")
-async def stream_progress(task_id: str, request: Request):
-    """SSE endpoint: streams progress events until task completes."""
+async def stream_progress(task_id: str, request: Request,
+                          query: str = "", resume_text: str = ""):
+    """SSE endpoint: streams progress events until task completes.
+
+    On Vercel, POST /api/search doesn't run a background task (cross-instance
+    state is unreliable). Instead this SSE connection drives the search directly,
+    keeping everything in one persistent function invocation.
+    """
+    import os as _os
 
     async def event_generator() -> AsyncIterator[dict]:
+        task = _tasks.get(task_id)
+
+        # Cross-instance case on Vercel: task not found here, but query was passed
+        if not task and query:
+            task = SearchTask(task_id=task_id, query=query)
+            async with _task_lock:
+                _tasks[task_id] = task
+
+        if not task:
+            yield {"event": "error", "data": "task not found"}
+            return
+
+        # On Vercel: kick off the search inside this SSE connection
+        if _os.environ.get("VERCEL") and task.status == TaskStatus.QUEUED:
+            asyncio.create_task(_run_search(task_id, task.query,
+                                            resume_text or None))
+
         last_message = ""
         for _ in range(600):  # max 10 min
             if await request.is_disconnected():
