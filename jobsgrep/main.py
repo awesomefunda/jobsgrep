@@ -555,21 +555,11 @@ async def download_report(task_id: str, user: AuthDep, query: str = ""):
     if not report_path or not Path(report_path).exists():
         raise HTTPException(status_code=404, detail="Report file not found")
 
-    settings = get_settings()
-    response = FileResponse(
+    return FileResponse(
         path=report_path,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename=Path(report_path).name,
     )
-
-    # PUBLIC mode: delete after download
-    if settings.is_public:
-        try:
-            Path(report_path).unlink()
-        except OSError:
-            pass
-
-    return response
 
 
 @app.get("/api/sources")
