@@ -96,9 +96,7 @@ class Settings(BaseSettings):
 
     @property
     def effective_scored_cache_ttl(self) -> int:
-        """PUBLIC mode never caches scored results."""
-        if self.jobsgrep_mode == DeployMode.PUBLIC:
-            return 0
+        """Scored cache TTL. PUBLIC mode allows reads (seed data) but /tmp is ephemeral."""
         return self.scored_cache_ttl
 
 
