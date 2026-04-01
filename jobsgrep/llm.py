@@ -37,6 +37,11 @@ async def complete(
         if result:
             return result
 
+    if settings.cerebras_api_key and "cerebras" not in _dead_providers:
+        result = await _cerebras(settings.cerebras_api_key, system, prompt, temperature, max_tokens)
+        if result:
+            return result
+
     if settings.groq_api_key:
         for model in ("llama-3.3-70b-versatile", "llama-3.1-8b-instant"):
             if model in _dead_providers:
@@ -104,6 +109,34 @@ async def _gemini(api_key: str, system: str, prompt: str, temperature: float, ma
                 logger.warning("gemini rate-limited, trying next provider")
         else:
             logger.warning("gemini failed: %s", e)
+        return None
+
+
+async def _cerebras(api_key: str, system: str, prompt: str, temperature: float, max_tokens: int) -> str | None:
+    try:
+        from cerebras.cloud.sdk import AsyncCerebras  # type: ignore
+        client = AsyncCerebras(api_key=api_key)
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        resp = await client.chat.completions.create(
+            model="llama3.1-8b",
+            messages=messages,
+            temperature=temperature,
+            max_completion_tokens=max_tokens,
+        )
+        return resp.choices[0].message.content
+    except ImportError:
+        logger.debug("cerebras-cloud-sdk not installed — skipping Cerebras")
+        _dead_providers.add("cerebras")
+        return None
+    except Exception as e:
+        msg = str(e).lower()
+        if "429" in msg or "rate" in msg or "quota" in msg:
+            logger.warning("cerebras rate-limited, trying next provider")
+        else:
+            logger.warning("cerebras failed: %s", e)
         return None
 
 
