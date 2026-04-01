@@ -69,7 +69,7 @@ async def main() -> None:
         try:
             raw_count, scored_count = await _prefetch_query(query)
             if scored_count == 0:
-                print(f"  ⚠ no scored results — skipping")
+                print(f"  WARNING: no scored results — skipping")
                 continue
 
             # Copy scored cache file to data/seed/
@@ -83,14 +83,14 @@ async def main() -> None:
                 dst = seed_dir / f"scored__{key}.json"
                 shutil.copy(scored_src, dst)
                 size_kb = dst.stat().st_size // 1024
-                print(f"  ✓ scored__{key}.json — {scored_count} scored jobs ({size_kb}KB)")
+                print(f"  OK scored__{key}.json — {scored_count} scored jobs ({size_kb}KB)")
                 seeded += 1
             if raw_src.exists():
                 dst = seed_dir / f"raw__{key}.json"
                 shutil.copy(raw_src, dst)
 
         except Exception as e:
-            print(f"  ✗ error: {e}")
+            print(f"  FAILED error: {e}")
 
         # Stagger to be polite to APIs
         if i < len(queries):

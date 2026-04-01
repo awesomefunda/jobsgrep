@@ -88,7 +88,7 @@ async def main() -> None:
             print(f"  cache key: {key}  titles={parsed.titles}  locs={parsed.locations}  remote={parsed.remote_ok}")
 
             scored = await score_jobs(all_raw, parsed)
-            print(f"  → {len(scored)} scored jobs")
+            print(f"  -> {len(scored)} scored jobs")
 
             if scored:
                 store_scored(key, scored, source="seed", label=query)
@@ -98,11 +98,11 @@ async def main() -> None:
                 if src.exists():
                     shutil.copy(src, dst)
                     size_kb = dst.stat().st_size // 1024
-                    print(f"  ✓ wrote {dst.name} ({size_kb} KB)")
+                    print(f"  OK wrote {dst.name} ({size_kb} KB)")
                     seeded += 1
         except Exception as e:
             import traceback
-            print(f"  ✗ {e}")
+            print(f"  FAILED: {e}")
             traceback.print_exc()
 
         print()

@@ -132,22 +132,32 @@ async def score_jobs(
     if cached_results:
         logger.info("score cache: %d hits, %d misses", len(cached_results), len(to_score))
 
-    # Step 3: LLM-score the uncached jobs in batches
+    # Step 3: LLM-score the uncached jobs in batches (up to 5 concurrent)
     llm_results: list[ScoredJob] = []
     total_batches = (len(to_score) + BATCH_SIZE - 1) // BATCH_SIZE
+    _sem = asyncio.Semaphore(3)
+    done_count = 0
 
-    for batch_idx, i in enumerate(range(0, len(to_score), BATCH_SIZE)):
-        batch = to_score[i: i + BATCH_SIZE]
-        if progress_cb:
-            done = i + len(batch)
-            await progress_cb(
-                f"Scoring jobs {done}/{len(to_score)}"
-                + (f" (batch {batch_idx+1}/{total_batches})" if total_batches > 1 else "")
-            )
+    async def _run_batch(batch_idx: int, batch: list) -> list[tuple]:
+        nonlocal done_count
+        async with _sem:
+            scores = await _score_batch(batch, requirements)
+            done_count += len(batch)
+            if progress_cb:
+                await progress_cb(
+                    f"Scoring jobs {done_count}/{len(to_score)}"
+                    + (f" (batch {batch_idx+1}/{total_batches})" if total_batches > 1 else "")
+                )
+        return list(zip(batch, scores))
 
-        scores = await _score_batch(batch, requirements)
-        for job, score in zip(batch, scores):
-            # Populate score cache for future use
+    batches = [
+        (bi, to_score[i: i + BATCH_SIZE])
+        for bi, i in enumerate(range(0, len(to_score), BATCH_SIZE))
+    ]
+    batch_results = await asyncio.gather(*[_run_batch(bi, b) for bi, b in batches])
+
+    for pairs in batch_results:
+        for job, score in pairs:
             _score_mem[_score_cache_key(job.id, rh)] = score
             if score.fit_score >= min_score:
                 llm_results.append(ScoredJob(job=job, score=score))
