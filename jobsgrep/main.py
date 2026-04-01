@@ -231,11 +231,13 @@ async def _run_search(task_id: str, query: str, resume_text: str | None) -> None
             get as _cache_get,
             store as _cache_store,
             get_scored as _get_scored,
+            get_scored_fuzzy as _get_scored_fuzzy,
         )
         _ck = _cache_key(parsed)
 
         # ── Phase 1a: scored cache hit → skip sources AND LLM entirely ──────
-        pre_scored = _get_scored(_ck)
+        # Try exact key first, then fuzzy title-overlap match against seed files.
+        pre_scored = _get_scored_fuzzy(parsed)
         if pre_scored is not None:
             logger.info("scored cache hit for task %s: %d jobs", task_id, len(pre_scored))
             task.total_jobs_found = len(pre_scored)

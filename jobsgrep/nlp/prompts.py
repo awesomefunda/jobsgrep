@@ -24,10 +24,18 @@ Return JSON matching this exact schema:
 }}
 
 Rules:
+- Normalize titles to canonical engineering forms before putting them in "titles":
+  - "SWE", "software dev", "software developer" → "Software Engineer"
+  - "dev manager", "software manager", "engineering lead", "software development manager", "SDM" → "Engineering Manager"
+  - "Staff SWE", "staff engineer" → "Staff Software Engineer"
+  - "Senior SWE", "Sr. Engineer", "senior engineer" → "Senior Software Engineer"
+  - "MLE", "ML engineer", "machine learning engineer" → "Machine Learning Engineer"
+  - "Dir of Eng", "engineering director", "director engineering" → "Director of Engineering"
+  - "VP Eng", "VP of Eng" → "VP of Engineering"
+  - "EM" (alone) → "Engineering Manager"
 - If the query says "Staff Engineer" also include "Staff Software Engineer", "Senior Staff Engineer", "Principal Engineer" in title_variations
 - If the query is for an IC (individual contributor) role, add management titles to exclude_keywords
 - If the query says "remote", set remote_ok=true and add "Remote" to locations
 - Infer reasonable skills from the role if not specified (e.g. "distributed systems" → Python, Go, Java, Kafka, Kubernetes)
-- Extract salary/compensation expectations into skills_preferred if mentioned
 - Return empty lists for fields with no information, never null
 """

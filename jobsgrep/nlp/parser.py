@@ -60,21 +60,67 @@ async def parse_query(query: str, resume_text: str | None = None) -> ParsedQuery
 
 import re
 
-def _fallback_parse(query: str) -> ParsedQuery:
-    """Minimal regex-based fallback when LLM is unavailable."""
-    query_lower = query.lower()
-    remote_ok = "remote" in query_lower
-    locations = ["Remote"] if remote_ok else []
+_LOCATION_ALIASES = {
+    "bay area": "San Francisco Bay Area",
+    "sf bay area": "San Francisco Bay Area",
+    "san francisco": "San Francisco Bay Area",
+    "sf": "San Francisco Bay Area",
+    "nyc": "New York City",
+    "new york": "New York City",
+    "seattle": "Seattle",
+    "austin": "Austin, Texas",
+    "la": "Los Angeles",
+    "los angeles": "Los Angeles",
+    "boston": "Boston",
+    "chicago": "Chicago",
+    "denver": "Denver",
+    "atlanta": "Atlanta",
+}
 
-    title_patterns = [
-        r"(staff|senior|principal|lead|junior|mid-level)?\s*(software engineer|sde|swe|backend engineer|frontend engineer|fullstack engineer|data engineer|ml engineer|data scientist|product manager|pm|devops engineer|sre|platform engineer|infra engineer)",
-        r"(vp|director|head)\s+of\s+\w+",
-    ]
-    titles = []
-    for pat in title_patterns:
-        m = re.search(pat, query_lower)
-        if m:
-            titles.append(m.group(0).strip().title())
+_TITLE_CANONICAL = [
+    # Order matters: more specific first
+    (r"senior\s+director\s+of\s+engineering",           "Senior Director of Engineering"),
+    (r"director\s+of\s+engineering|engineering\s+director|dir\s+of\s+eng", "Director of Engineering"),
+    (r"vp\s+of\s+engineering|vp\s+eng",                 "VP of Engineering"),
+    (r"senior\s+engineering\s+manager",                 "Senior Engineering Manager"),
+    (r"engineering\s+manager|dev\s+manager|software\s+development\s+manager|sdm\b|software\s+manager|tech\s+lead\s+manager|\bem\b", "Engineering Manager"),
+    (r"staff\s+software\s+engineer|staff\s+swe|staff\s+engineer",          "Staff Software Engineer"),
+    (r"senior\s+software\s+engineer|senior\s+swe|sr\.?\s+software\s+engineer", "Senior Software Engineer"),
+    (r"principal\s+software\s+engineer|principal\s+engineer",              "Principal Software Engineer"),
+    (r"machine\s+learning\s+engineer|ml\s+engineer|mle\b",                 "Machine Learning Engineer"),
+    (r"backend\s+engineer|back[\s-]?end\s+engineer",                       "Backend Engineer"),
+    (r"frontend\s+engineer|front[\s-]?end\s+engineer",                     "Frontend Engineer"),
+    (r"data\s+engineer",                                                    "Data Engineer"),
+    (r"data\s+scientist",                                                   "Data Scientist"),
+    (r"devops\s+engineer|sre\b|platform\s+engineer|infra\s+engineer",      "DevOps Engineer"),
+    (r"software\s+engineer|swe\b|sde\b",                                   "Software Engineer"),
+]
+
+
+def _fallback_parse(query: str) -> ParsedQuery:
+    """Regex-based fallback parser when LLM is unavailable.
+
+    Handles common aliases: SWE, EM, SDM, staff/senior/director titles,
+    and location shorthands like 'bay area', 'NYC'.
+    """
+    query_lower = query.lower()
+    remote_ok = bool(re.search(r"\bremote\b", query_lower))
+
+    # Extract locations
+    locations: list[str] = []
+    if remote_ok:
+        locations.append("Remote")
+    for alias, canonical in _LOCATION_ALIASES.items():
+        if alias in query_lower and canonical not in locations:
+            locations.append(canonical)
+
+    # Extract canonical title
+    titles: list[str] = []
+    for pattern, canonical in _TITLE_CANONICAL:
+        if re.search(pattern, query_lower):
+            titles.append(canonical)
+            break  # first match wins
+
     if not titles:
         titles = ["Software Engineer"]
 
