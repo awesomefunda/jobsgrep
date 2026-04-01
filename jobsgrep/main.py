@@ -210,7 +210,16 @@ def _task_response(task: SearchTask) -> StatusResponse:
 
 async def _run_search(task_id: str, query: str, resume_text: str | None) -> None:
     """Background task: parse → search → score → report."""
+    import os as _os
+    from urllib.parse import quote as _quote
     from .report.excel import generate_report
+
+    def _download_url() -> str:
+        """Build download URL; on Vercel include query so any instance can regenerate."""
+        base = f"/api/download/{task_id}"
+        if _os.environ.get("VERCEL") and query:
+            return f"{base}?query={_quote(query)}"
+        return base
 
     async def update(status: TaskStatus, message: str) -> None:
         task = _tasks[task_id]
@@ -249,7 +258,7 @@ async def _run_search(task_id: str, query: str, resume_text: str | None) -> None
             task.completed_at = datetime.now(timezone.utc)
             from .report.excel import generate_report
             report_path = generate_report(pre_scored, task, _REPORTS_DIR)
-            task.download_url = f"/api/download/{task_id}"
+            task.download_url = _download_url()
 
             from .history import record_search
             record_search(query, task.total_jobs_found, len(pre_scored), task.sources_searched)
@@ -284,7 +293,7 @@ async def _run_search(task_id: str, query: str, resume_text: str | None) -> None
             task.completed_at = datetime.now(timezone.utc)
             from .report.excel import generate_report
             report_path = generate_report(scored, task, _REPORTS_DIR)
-            task.download_url = f"/api/download/{task_id}"
+            task.download_url = _download_url()
 
             from .history import record_search
             record_search(query, task.total_jobs_found, len(scored), task.sources_searched)
@@ -493,16 +502,7 @@ async def stream_progress(task_id: str, request: Request,
                     ),
                 }
             if task.status in (TaskStatus.COMPLETE, TaskStatus.FAILED):
-                resp = _task_response(task)
-                # On Vercel, append ?query=... to the download URL so the
-                # download endpoint can regenerate the report on any instance.
-                import os as _os
-                if _os.environ.get("VERCEL") and task.query and resp.download_url:
-                    from urllib.parse import quote
-                    resp.download_url = (
-                        f"{resp.download_url}?query={quote(task.query)}"
-                    )
-                yield {"event": "done", "data": resp.model_dump_json()}
+                yield {"event": "done", "data": _task_response(task).model_dump_json()}
                 break
             await asyncio.sleep(1)
 
