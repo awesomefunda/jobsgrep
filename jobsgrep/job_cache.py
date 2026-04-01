@@ -253,25 +253,37 @@ def get_scored_fuzzy(query: "ParsedQuery") -> "list | None":
             if not label:
                 continue
 
-            # Remote compatibility: must agree
-            stored_remote = "remote" in label.lower()
-            if query.remote_ok != stored_remote:
-                continue
-
             label_words = _words(label)
+            stored_remote = "remote" in label.lower()
 
-            # Location guard: if the user asked for a specific city/region,
-            # only match seeds for the SAME location.  Returning SF Bay Area
-            # jobs for an Austin query gives wrong results.
+            # Remote + location guard:
+            # - If query is remote-only → only match remote seeds
+            # - If query has specific city → only match seeds for that city
+            # - If query is "city OR remote" (remote_ok=True + city words) →
+            #   match either remote seeds OR seeds for that city
             NON_LOC = _words("remote")
-            seed_loc_words = label_words - query_title_words - NON_LOC
-            if query_loc_words - NON_LOC:
-                # User specified a non-remote location — require meaningful overlap
-                loc_overlap = len(query_loc_words & label_words)
+            query_city_words = query_loc_words - NON_LOC
+            query_is_remote_only = query.remote_ok and not query_city_words
+            query_is_city_or_remote = query.remote_ok and query_city_words
+            query_is_city_only = not query.remote_ok and query_city_words
+
+            if query_is_remote_only:
+                if not stored_remote:
+                    continue
+                loc_overlap = 1
+            elif query_is_city_only:
+                # Must match the specific city; remote seeds don't count
+                loc_overlap = len(query_city_words & label_words)
                 if loc_overlap == 0:
-                    continue  # different city/region → skip
+                    continue
+            elif query_is_city_or_remote:
+                # Accept remote seeds OR seeds whose location overlaps the city
+                loc_overlap = len(query_city_words & label_words)
+                if not stored_remote and loc_overlap == 0:
+                    continue  # different city and not remote → skip
+                loc_overlap = max(loc_overlap, 1)
             else:
-                loc_overlap = 1  # remote-only query: location is irrelevant
+                loc_overlap = 1
 
             title_overlap = len(query_title_words & label_words)
 
