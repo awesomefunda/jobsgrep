@@ -113,7 +113,7 @@ class SearchTask(BaseModel):
     completed_at: datetime | None = None
     sources_searched: list[str] = Field(default_factory=list)
     jobs_per_source: dict[str, int] = Field(default_factory=dict)
-    hot_skills: list[tuple[str, int]] = Field(default_factory=list)  # [(skill, count), ...]
+    hot_skills: list[dict] = Field(default_factory=list)  # [{"skill": str, "count": int}, ...]
 
 
 # ─── API request/response ─────────────────────────────────────────────────────

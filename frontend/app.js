@@ -259,12 +259,12 @@
   }
 
   function renderHotSkills(skills) {
-    // skills = [[name, count], ...]
-    const max = skills[0][1] || 1;
-    hotSkillsList.innerHTML = skills.map(([skill, count]) => {
-      const pct = Math.round((count / max) * 100);
-      return `<span class="skill-chip" title="${count} job${count !== 1 ? 's' : ''}"
-                style="--bar:${pct}%">${escHtml(skill)}<em>${count}</em></span>`;
+    // skills = [{skill, count}, ...]
+    const max = (skills[0] && skills[0].count) || 1;
+    hotSkillsList.innerHTML = skills.map(item => {
+      const pct = Math.round((item.count / max) * 100);
+      return `<span class="skill-chip" title="${item.count} job${item.count !== 1 ? 's' : ''}"
+                style="--bar:${pct}%">${escHtml(item.skill)}<em>${item.count}</em></span>`;
     }).join('');
     hotSkillsPanel.style.display = 'block';
   }

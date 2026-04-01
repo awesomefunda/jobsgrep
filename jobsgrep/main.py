@@ -206,7 +206,7 @@ if _FRONTEND_DIR.exists():
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def _compute_hot_skills(scored_jobs: list, top_n: int = 15) -> list[tuple[str, int]]:
+def _compute_hot_skills(scored_jobs: list, top_n: int = 15) -> list[dict]:
     """Count skill mentions across all scored jobs (matching + missing) and return top N."""
     from collections import Counter
     counts: Counter = Counter()
@@ -214,7 +214,7 @@ def _compute_hot_skills(scored_jobs: list, top_n: int = 15) -> list[tuple[str, i
         for skill in sj.score.matching_skills + sj.score.missing_skills:
             if skill.strip():
                 counts[skill.strip()] += 1
-    return counts.most_common(top_n)
+    return [{"skill": s, "count": c} for s, c in counts.most_common(top_n)]
 
 
 def _task_response(task: SearchTask) -> StatusResponse:
