@@ -54,9 +54,11 @@ def test_fallback_parse_title(query, expected_title_fragment):
 # ── Seed cache: non-zero results for each key query ──────────────────────────
 
 @pytest.mark.parametrize("query,min_jobs", [
-    ("Software engineer job in bay area",   50),
-    ("Software engineer job in seattle",     5),
-    ("Software development job in austin",  10),
+    ("Software engineer job in bay area",            50),
+    ("Software engineer job in seattle",              5),
+    ("Software development manager job in bay area",  5),
+    ("Software development manager job in seattle",   5),
+    ("Software development job in austin",           10),
 ])
 def test_seed_cache_returns_results(query, min_jobs):
     parsed = _fallback_parse(query)
@@ -68,22 +70,6 @@ def test_seed_cache_returns_results(query, min_jobs):
     assert len(jobs) >= min_jobs, (
         f"Query {query!r}: expected >= {min_jobs} jobs, got {len(jobs)}"
     )
-
-
-# EM queries have no valid city seeds yet — marked xfail until proper seeds are generated.
-# To fix: run `python scripts/seed_from_cache.py` after fetching EM jobs locally,
-# then commit the new seed files under data/seed/ and jobsgrep/seed_data/.
-@pytest.mark.xfail(reason="No Engineering Manager seeds for city queries yet", strict=False)
-@pytest.mark.parametrize("query", [
-    "Software development manager job in bay area",
-    "Software development manager job in seattle",
-])
-def test_seed_cache_em_city_queries(query):
-    parsed = _fallback_parse(query)
-    result = get_scored_fuzzy(parsed)
-    assert result is not None, f"No seed for {query!r}"
-    jobs, _ = result
-    assert len(jobs) >= 1
 
 
 @pytest.mark.parametrize("query,forbidden_title_fragments", [
