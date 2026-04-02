@@ -125,6 +125,11 @@ def _load_seed_cache() -> None:
     if seeded:
         logger.info("seeded %d cache file(s) from data/seed/", seeded)
 
+    # Prime the in-memory label index so fuzzy scans skip full-file reads
+    from .job_cache import prime_label_index
+    indexed = prime_label_index()
+    logger.info("label index primed: %d entries", indexed)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

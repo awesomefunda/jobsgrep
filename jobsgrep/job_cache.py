@@ -26,6 +26,8 @@ logger = logging.getLogger("jobsgrep.cache")
 _DEFAULT_TTL = 6 * 3600   # 6 hours
 _mem: dict[str, dict] = {}          # raw jobs in-memory overlay
 _scored_mem: dict[str, dict] = {}   # scored jobs in-memory overlay
+# Lightweight label index: key → {label, hot_skills} — avoids reading full files during fuzzy scan
+_label_index: dict[str, dict] = {}
 
 
 def _cache_dir() -> Path:
@@ -240,11 +242,29 @@ def get_scored_fuzzy(query: "ParsedQuery") -> "tuple[list, list] | None":
     best_key: str | None = None
     best_score = 0
 
-    scored_dir = _scored_dir()
-    for path in scored_dir.glob("*.json"):
+    # Build candidates from in-memory label index first (no disk I/O).
+    # Fall back to scanning disk when index is empty (first request on cold start
+    # before _load_seed_cache has populated the index via store_scored).
+    if _label_index:
+        candidates = [(k, v["label"]) for k, v in _label_index.items()]
+    else:
+        candidates = []
+        scored_dir = _scored_dir()
+        for path in scored_dir.glob("*.json"):
+            try:
+                entry = json.loads(path.read_text(encoding="utf-8"))
+                label = entry.get("label", "")
+                if label:
+                    _label_index[path.stem] = {
+                        "label": label,
+                        "hot_skills": entry.get("hot_skills", []),
+                    }
+                    candidates.append((path.stem, label))
+            except Exception:
+                continue
+
+    for key, label in candidates:
         try:
-            entry = json.loads(path.read_text(encoding="utf-8"))
-            label = entry.get("label", "")
             if not label:
                 continue
 
@@ -291,7 +311,7 @@ def get_scored_fuzzy(query: "ParsedQuery") -> "tuple[list, list] | None":
                 score = title_overlap * 3 + loc_overlap - false_match_penalty
                 if score > best_score:
                     best_score = score
-                    best_key = path.stem
+                    best_key = key
         except Exception:
             continue
 
@@ -322,22 +342,57 @@ def store_scored(key: str, jobs: "list", source: str = "prefetch", label: str = 
     if get_settings().effective_scored_cache_ttl == 0:
         return
 
+    hot_skills = _compute_hot_skills_from_jobs(jobs)
     entry: dict[str, Any] = {
         "key":        key,
         "label":      label,
         "source":     source,
         "stored_at":  time.time(),
         "job_count":  len(jobs),
-        "hot_skills": _compute_hot_skills_from_jobs(jobs),
+        "hot_skills": hot_skills,
         "jobs":       [{"job": j.job.model_dump(), "score": j.score.model_dump()} for j in jobs],
     }
     _scored_mem[key] = entry
+    _label_index[key] = {"label": label, "hot_skills": hot_skills}
     try:
         path = _scored_dir() / f"{key}.json"
         path.write_text(json.dumps(entry), encoding="utf-8")
         logger.info("scored cache stored: %d jobs -> %s (source=%s)", len(jobs), key, source)
     except OSError as e:
         logger.warning("scored cache write failed: %s", e)
+
+
+def prime_label_index() -> int:
+    """Read only label+hot_skills from scored cache files into _label_index.
+
+    Called at startup after seeds are copied to /tmp so that the first
+    get_scored_fuzzy() call uses memory instead of reading full JSON files.
+    Returns number of entries indexed.
+    """
+    count = 0
+    for path in _scored_dir().glob("*.json"):
+        key = path.stem
+        if key in _label_index:
+            continue
+        try:
+            # Read only first 512 bytes to get label — avoids loading full file
+            with path.open(encoding="utf-8") as f:
+                head = f.read(512)
+            import re as _re
+            m = _re.search(r'"label"\s*:\s*"([^"]*)"', head)
+            m2 = _re.search(r'"hot_skills"\s*:', head)
+            if m:
+                label = m.group(1)
+                # hot_skills may not fit in 512 bytes — do a full read only if needed
+                if m2:
+                    entry = json.loads(path.read_text(encoding="utf-8"))
+                    _label_index[key] = {"label": label, "hot_skills": entry.get("hot_skills", [])}
+                else:
+                    _label_index[key] = {"label": label, "hot_skills": []}
+                count += 1
+        except Exception:
+            continue
+    return count
 
 
 def _deserialize_scored(raw_list: list) -> list:
