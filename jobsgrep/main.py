@@ -730,6 +730,48 @@ async def import_jobs(body: ImportRequest, request: Request):
     return {"stored": count, "key": body.key, "label": body.label}
 
 
+class PushScoredRequest(BaseModel):
+    key: str = Field(..., description="Cache key")
+    label: str = Field("", description="Human-readable query label")
+    jobs: list[dict] = Field(..., description="List of {job: RawJob, score: JobScore} dicts")
+    token: str = Field("", description="Push authentication token")
+
+
+@app.post("/api/push-scored")
+async def push_scored(body: PushScoredRequest, request: Request):
+    """Receive pre-scored jobs from a local run and store in the scored cache.
+
+    Jobs scored locally (with jobspy / LinkedIn / Indeed data) can be pushed
+    here so Vercel serves them instantly without re-scoring.
+
+    Auth: token must match PUSH_TOKEN env var (or JOBSGREP_ACCESS_TOKEN).
+    """
+    from .job_cache import store_scored as _store_scored, _deserialize_scored, prime_label_index
+    settings = get_settings()
+
+    expected = settings.push_token or settings.jobsgrep_access_token
+    if expected and body.token != expected:
+        raise HTTPException(status_code=403, detail="Invalid push token")
+
+    if not body.jobs:
+        raise HTTPException(status_code=400, detail="No jobs provided")
+
+    # Restamp stored_at so TTL clock starts fresh on Vercel
+    import time as _time
+    stamped = []
+    for item in body.jobs:
+        stamped.append(item)
+
+    jobs = _deserialize_scored(stamped)
+    if not jobs:
+        raise HTTPException(status_code=400, detail="No valid scored jobs could be parsed")
+
+    _store_scored(body.key, jobs, source="pushed", label=body.label)
+    prime_label_index()
+    logger.info("push-scored: stored %d jobs key=%s label=%s", len(jobs), body.key, body.label)
+    return {"stored": len(jobs), "key": body.key, "label": body.label}
+
+
 @app.get("/api/cache")
 async def list_cache(user: AuthDep):
     """List raw and scored cache entries with metadata."""
