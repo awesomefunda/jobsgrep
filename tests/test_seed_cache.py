@@ -15,7 +15,34 @@ from jobsgrep.job_cache import get_scored_fuzzy, prime_label_index
 
 @pytest.fixture(scope="module", autouse=True)
 def load_seeds():
-    """Populate the in-memory label index from seed files before any test runs."""
+    """Copy repo seed_data/ into the local scored cache and prime the label index.
+
+    This mirrors what _load_seed_cache() does at Vercel cold-start, ensuring
+    tests always run against the committed seed files regardless of local cache state.
+    """
+    import json, shutil, time as _time
+    from pathlib import Path
+    from jobsgrep.job_cache import _scored_dir, _scored_mem, _label_index
+
+    # Clear in-memory state so seeds are read fresh from disk
+    _scored_mem.clear()
+    _label_index.clear()
+
+    pkg_seed = Path(__file__).parent.parent / "jobsgrep" / "seed_data"
+    legacy_seed = Path(__file__).parent.parent / "data" / "seed"
+    seed_dir = pkg_seed if pkg_seed.exists() else legacy_seed
+
+    scored = _scored_dir()
+    now = _time.time()
+    for src in seed_dir.glob("scored__*.json"):
+        dst = scored / src.name.replace("scored__", "")
+        try:
+            data = json.loads(src.read_text(encoding="utf-8"))
+            data["stored_at"] = now
+            dst.write_text(json.dumps(data), encoding="utf-8")
+        except Exception:
+            shutil.copy(src, dst)
+
     prime_label_index()
 
 
