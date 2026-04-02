@@ -169,6 +169,8 @@ def evict_expired() -> int:
         for path in directory.glob("*.json"):
             try:
                 entry = json.loads(path.read_text(encoding="utf-8"))
+                if entry.get("source") == "seed":
+                    continue  # seeds never expire
                 if time.time() - entry.get("stored_at", 0) > ttl:
                     path.unlink()
                     removed += 1
@@ -189,7 +191,8 @@ def get_scored(key: str) -> "tuple[list, list] | None":
 
     if key in _scored_mem:
         entry = _scored_mem[key]
-        if time.time() - entry["stored_at"] < ttl:
+        is_seed = entry.get("source") == "seed"
+        if is_seed or time.time() - entry["stored_at"] < ttl:
             logger.debug("scored cache hit (memory): %s (%d jobs)", key, entry["job_count"])
             return _deserialize_scored(entry["jobs"]), entry.get("hot_skills", [])
         del _scored_mem[key]
@@ -201,7 +204,9 @@ def get_scored(key: str) -> "tuple[list, list] | None":
     try:
         entry = json.loads(path.read_text(encoding="utf-8"))
         age = time.time() - entry.get("stored_at", 0)
-        if age > ttl:
+        # Seeds are static committed data — never expire them via TTL
+        is_seed = entry.get("source") == "seed"
+        if not is_seed and age > ttl:
             path.unlink(missing_ok=True)
             logger.debug("scored cache expired: %s (%.1fh old, ttl=%.1fh)",
                          key, age / 3600, ttl / 3600)
