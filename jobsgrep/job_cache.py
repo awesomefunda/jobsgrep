@@ -345,6 +345,19 @@ def get_scored_fuzzy(query: "ParsedQuery") -> "tuple[list, list] | None":
         if remote_best_key and remote_best_score >= 2:
             result = get_scored(remote_best_key)
             if result is not None:
+                # Sanity check: reject the seed if its actual jobs don't match the
+                # query title intent (e.g. an EM seed full of SWE jobs).
+                jobs_sample, _ = result
+                sample = jobs_sample[:20]
+                if sample:
+                    matching = sum(
+                        1 for j in sample
+                        if any(tw in j.job.title.lower() for tw in query_title_words)
+                    )
+                    if matching / len(sample) < 0.3:
+                        logger.info("remote seed %s rejected: title mismatch (%.0f%% match for %s)",
+                                    remote_best_key, matching / len(sample) * 100, query.titles)
+                        return None
                 logger.info("fuzzy scored cache fallback to remote seed: %s (score=%d, query titles=%s)",
                             remote_best_key, remote_best_score, query.titles)
                 return result
