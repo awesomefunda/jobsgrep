@@ -108,7 +108,11 @@ def main() -> None:
         url = f"{args.host.rstrip('/')}/api/push-scored"
         req = urllib.request.Request(
             url, data=payload,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (compatible; jobsgrep-push/1.0)",
+                "Accept": "application/json",
+            },
             method="POST",
         )
         try:
