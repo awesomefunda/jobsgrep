@@ -88,6 +88,7 @@ def generate_report(
     wb = Workbook()
     _sheet_tracker(wb, scored_jobs)
     _sheet_all_jobs(wb, scored_jobs)
+    _sheet_ai_toolkit(wb, scored_jobs, task)
     _sheet_summary(wb, task)
 
     wb.save(str(out_path))
@@ -257,6 +258,157 @@ def _sheet_all_jobs(wb: Workbook, scored_jobs: list[ScoredJob]) -> None:
     ws.row_dimensions[1].height = 28
     for r in range(2, len(scored_jobs) + 2):
         ws.row_dimensions[r].height = 30
+
+
+def _sheet_ai_toolkit(wb: Workbook, scored_jobs: list[ScoredJob], task: SearchTask) -> None:
+    """Sheet 3: AI Toolkit — resume paste area + per-job LLM prompts.
+
+    Upload this sheet (or the whole file) to Claude / ChatGPT / Codex to:
+      • Write personalized cover letters
+      • Tailor your resume for each role
+      • Draft LinkedIn outreach messages
+      • Identify skill gaps and a learning plan
+    """
+    ws = wb.create_sheet("AI Toolkit")
+
+    BLUE   = PatternFill("solid", fgColor="1B2A4A")
+    TEAL   = PatternFill("solid", fgColor="0D5E4A")
+    AMBER  = PatternFill("solid", fgColor="FF8F00")
+    LGRAY  = PatternFill("solid", fgColor="F5F5F5")
+    LGREEN = PatternFill("solid", fgColor="E8F5E9")
+    WHITE  = PatternFill("solid", fgColor="FFFFFF")
+    WHT_FN = Font(color="FFFFFF", bold=True, size=10)
+    BLD    = Font(bold=True)
+    ITL    = Font(italic=True, color="555555", size=9)
+
+    def _section(row: int, text: str, fill: PatternFill, cols: int = 2) -> None:
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=cols)
+        c = ws.cell(row=row, column=1, value=text)
+        c.fill = fill; c.font = WHT_FN; c.alignment = _WRAP; c.border = _BORDER
+
+    def _label(row: int, col: int, text: str) -> None:
+        c = ws.cell(row=row, column=col, value=text)
+        c.font = BLD; c.fill = LGRAY; c.border = _BORDER; c.alignment = _TOP
+
+    def _cell(row: int, col: int, text: str, fill=WHITE) -> None:
+        c = ws.cell(row=row, column=col, value=text)
+        c.fill = fill; c.border = _BORDER; c.alignment = _WRAP
+
+    # ── Section 1: How to use ────────────────────────────────────────────────
+    _section(1, "HOW TO USE THIS SHEET", BLUE, cols=2)
+    instructions = (
+        "1. PASTE YOUR RESUME in the yellow box below (plain text is fine).\n"
+        "2. UPLOAD THIS FILE to Claude (claude.ai), ChatGPT, or any LLM tool — "
+        "or copy individual prompts from the table at the bottom.\n"
+        "3. The LLM will use your resume + the job data to write cover letters, "
+        "tailor your resume, draft outreach messages, and identify skill gaps.\n\n"
+        "TIP: Tell the LLM  →  \"Use my resume and the job data in the AI Toolkit "
+        "sheet to help me apply to the top 5 jobs. Start with cover letters.\""
+    )
+    ws.merge_cells(start_row=2, start_column=1, end_row=5, end_column=2)
+    ic = ws.cell(row=2, column=1, value=instructions)
+    ic.fill = LGREEN; ic.alignment = _WRAP; ic.border = _BORDER
+    ws.row_dimensions[2].height = 80
+
+    # ── Section 2: Resume paste area ────────────────────────────────────────
+    _section(6, "YOUR RESUME  (paste plain text below — used by the LLM for all prompts)", AMBER, cols=2)
+    ws.merge_cells(start_row=7, start_column=1, end_row=22, end_column=2)
+    rc = ws.cell(row=7, column=1,
+                 value="← Paste your resume here. Include: name, contact, summary, "
+                       "work experience (company / title / dates / bullets), "
+                       "education, and skills.")
+    rc.font = Font(italic=True, color="AAAAAA")
+    rc.fill = PatternFill("solid", fgColor="FFFDE7")
+    rc.alignment = _WRAP; rc.border = _BORDER
+    ws.row_dimensions[7].height = 200
+
+    # ── Section 3: Prompt templates ──────────────────────────────────────────
+    _section(23, "READY-TO-USE PROMPT TEMPLATES  (copy & paste into any LLM)", TEAL, cols=2)
+    templates = [
+        ("Cover Letter",
+         "I'm applying to [COMPANY] for the [TITLE] role (URL: [URL]).\n"
+         "Using my resume above and the job description below, write a concise, "
+         "compelling cover letter (3 paragraphs). Lead with the strongest overlap "
+         "between my experience and what they need. Avoid clichés.\n\n"
+         "Job description: [PASTE JOB DESCRIPTION]"),
+        ("Resume Tailoring",
+         "Compare my resume to the [TITLE] role at [COMPANY].\n"
+         "List: (1) 3 bullet points I should rewrite to better match their language, "
+         "(2) any keywords from the JD I'm missing entirely, "
+         "(3) one line I should remove because it's irrelevant.\n"
+         "Be specific — quote the exact resume lines and suggest rewrites."),
+        ("LinkedIn Outreach",
+         "Write a short LinkedIn message (< 75 words) to the hiring manager at "
+         "[COMPANY] for the [TITLE] role. I want to express genuine interest, "
+         "mention one specific thing about the company that resonates with my "
+         "background, and ask for a 15-min call. Keep it warm but professional."),
+        ("Skill Gap Analysis",
+         "Based on the [TITLE] job at [COMPANY] and my resume, tell me:\n"
+         "(1) The 3 most important skills I'm missing\n"
+         "(2) For each missing skill: a free resource or project I can do in < 2 weeks "
+         "to demonstrate it\n"
+         "(3) An honest assessment — should I apply now or upskill first?"),
+        ("Batch Score All Jobs",
+         "I have a list of job listings below (from the Job Tracker sheet). "
+         "Score each one from 0–10 based on fit with my resume. "
+         "Output a ranked table: Rank | Company | Title | Score | One-line reason.\n"
+         "Prioritise roles where my experience directly matches ≥ 70% of requirements."),
+    ]
+    for i, (name, prompt) in enumerate(templates):
+        r = 24 + i * 3
+        _label(r, 1, name)
+        ws.merge_cells(start_row=r, start_column=2, end_row=r + 2, end_column=2)
+        pc = ws.cell(row=r, column=2, value=prompt)
+        pc.fill = LGREEN; pc.alignment = _WRAP; pc.border = _BORDER
+        ws.row_dimensions[r].height = 60
+        ws.row_dimensions[r + 1].height = 1
+        ws.row_dimensions[r + 2].height = 1
+
+    # ── Section 4: Per-job data table ────────────────────────────────────────
+    table_start = 24 + len(templates) * 3 + 1
+    _section(table_start, "JOB DATA  (company, description, skills — used by the LLM prompts above)", BLUE, cols=6)
+
+    col_headers = ["#", "Company", "Title", "Location", "Required Skills / Missing Skills", "Job Description (first 1500 chars)"]
+    col_widths   = [4,   20,        28,      18,          38,                                  70]
+    for col, (hdr, w) in enumerate(zip(col_headers, col_widths), 1):
+        c = ws.cell(row=table_start + 1, column=col, value=hdr)
+        c.fill = BLUE; c.font = WHT_FN; c.alignment = _WRAP; c.border = _BORDER
+        ws.column_dimensions[get_column_letter(col)].width = w
+
+    for rank, sj in enumerate(scored_jobs, 1):
+        job   = sj.job
+        score = sj.score
+        r     = table_start + 1 + rank
+
+        skills_text = ""
+        if score.matching_skills:
+            skills_text += "Have: " + ", ".join(score.matching_skills)
+        if score.missing_skills:
+            skills_text += ("\n" if skills_text else "") + "Missing: " + ", ".join(score.missing_skills)
+        if not skills_text:
+            skills_text = job.source  # fallback if no LLM scoring
+
+        desc = (job.description or "").strip()
+        desc_preview = desc[:1500] + ("…" if len(desc) > 1500 else "")
+
+        row_vals = [rank, job.company, job.title, job.location, skills_text, desc_preview]
+        fill = _score_fill(score.fit_score)
+        for col, val in enumerate(row_vals, 1):
+            c = ws.cell(row=r, column=col, value=val)
+            c.fill = fill if col <= 4 else WHITE
+            c.border = _BORDER; c.alignment = _WRAP
+        ws.row_dimensions[r].height = 72
+
+    # Column widths for resume + instructions columns (A, B)
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 80
+
+    # Row heights for fixed sections
+    ws.row_dimensions[1].height = 22
+    ws.row_dimensions[6].height = 22
+    ws.row_dimensions[23].height = 22
+    for ri in range(7, 23):
+        ws.row_dimensions[ri].height = 14
 
 
 def _sheet_summary(wb: Workbook, task: SearchTask) -> None:
