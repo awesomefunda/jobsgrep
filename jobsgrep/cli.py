@@ -23,6 +23,7 @@ def main() -> None:
     p_search = sub.add_parser("search", help="CLI-only search, outputs Excel directly")
     p_search.add_argument("query", nargs="+")
     p_search.add_argument("--out", default=".")
+    p_search.add_argument("--no-score", action="store_true", help="Skip AI scoring")
 
     # discover
     p_discover = sub.add_parser("discover", help="Run ATS slug discovery for all YC companies")
@@ -52,6 +53,9 @@ def main() -> None:
     p_prefetch.add_argument(
         "--first-only", action="store_true",
         help="Only warm up 'Software Engineer' — fastest initial run",
+    )
+    p_prefetch.add_argument(
+        "--no-score", action="store_true", help="Skip AI scoring"
     )
 
     # push
@@ -112,29 +116,35 @@ def _cmd_serve(args) -> None:
 
 
 async def _cmd_search(args) -> None:
+    import shutil
     from pathlib import Path
-    from .config import get_settings
     from .main import _run_search, _tasks
     from .models import SearchTask, TaskStatus
 
     query = " ".join(args.query)
     task_id = "cli-search"
-    task = SearchTask(task_id=task_id, query=query)
+    task = SearchTask(task_id=task_id, query=query, skip_scoring=args.no_score)
     _tasks[task_id] = task
 
-    print(f"Searching: {query}")
-    await _run_search(task_id, query, None)
+    sys.stderr.write(f"Searching: {query} (skip_scoring={args.no_score})\n"); sys.stderr.flush()
+    await _run_search(task_id, query, None, skip_scoring=args.no_score)
 
     task = _tasks[task_id]
-    if task.status == TaskStatus.COMPLETE:
+    if task.status in (TaskStatus.COMPLETE, TaskStatus.SEARCH_COMPLETE):
         report_path = getattr(task, "_report_path", None)
+        sys.stderr.write(f"Found: {task.total_jobs_found}  Scored: {task.total_jobs_scored}\n"); sys.stderr.flush()
         if report_path:
-            import shutil
-            dest = Path(args.out) / Path(report_path).name
-            shutil.copy(report_path, dest)
-            print(f"Report saved: {dest}")
+            src = Path(report_path)
+            out_dir = Path(args.out).expanduser().resolve()
+            dest = out_dir / src.name
+            if src.resolve() != dest:
+                out_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy(str(src), str(dest))
+            sys.stderr.write(f"Report: {dest}\n"); sys.stderr.flush()
+        else:
+            sys.stderr.write("No matches above threshold.\n"); sys.stderr.flush()
     else:
-        print(f"Search failed: {task.error}", file=sys.stderr)
+        sys.stderr.write(f"Search failed: {task.error}\n"); sys.stderr.flush()
         sys.exit(1)
 
 
@@ -189,12 +199,12 @@ async def _cmd_run_prefetch(args) -> None:
     else:
         queries = _DEFAULT_QUERIES
 
-    print(f"\nPrefetching {len(queries)} quer{'y' if len(queries)==1 else 'ies'}:")
+    print(f"\nPrefetching {len(queries)} quer{'y' if len(queries)==1 else 'ies'} (skip_scoring={args.no_score}):")
     for q in queries:
         print(f"  · {q}")
     print()
 
-    await run_prefetch_cycle(queries, stagger_seconds=20.0)
+    await run_prefetch_cycle(queries, stagger_seconds=20.0, skip_scoring=args.no_score)
     print("\nDone. Run 'jobsgrep push' to upload results to a remote server.")
 
 

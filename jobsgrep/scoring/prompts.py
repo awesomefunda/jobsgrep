@@ -17,11 +17,11 @@ Score these {count} jobs against the candidate requirements below.
 {jobs_block}
 
 Return a JSON array of exactly {count} objects in input order:
-{{"job_index":0,"fit_score":0.0-1.0,"reasoning":"≤10 words","matching_skills":[],"missing_skills":[],"red_flags":[],"salary_range":null}}
+{{"job_index":0,"fit_score":0.0-1.0,"reasoning":"≤10 words","matching_skills":[],"missing_skills":[],"red_flags":[],"salary_range":null,"role_type":"e.g. AI Platform|Agentic AI|ML Engineer|Data Engineer|Solutions Architect|Technical PM|DevOps|Backend|Frontend|Full-Stack|Other","seniority_level":"Junior|Mid|Senior|Staff|Principal|Director|VP|Unknown"}}
 """
 
 
-def build_requirements_block(query) -> str:
+def build_requirements_block(query, resume_summary: str | None = None) -> str:
     lines = []
     if query.titles:
         lines.append(f"Titles: {', '.join(query.titles)}")
@@ -39,6 +39,8 @@ def build_requirements_block(query) -> str:
         lines.append("Remote: yes")
     if query.exclude_keywords:
         lines.append(f"Exclude: {', '.join(query.exclude_keywords)}")
+    if resume_summary:
+        lines.append(f"Candidate background: {resume_summary[:400]}")
     return "\n".join(lines)
 
 

@@ -21,6 +21,8 @@ DEFAULT_BOARDS = [
     "weights-biases", "hugging-face",
     "openai", "cohere", "ai21labs",
     "faire", "fabric", "roam",
+    # High-paying AI/ML companies
+    "runway", "glean", "character", "groq", "mistral",
 ]
 
 

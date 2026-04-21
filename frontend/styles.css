@@ -68,12 +68,16 @@ main {
 .search-card h1 {
   font-size: 1.5rem;
   font-weight: 600;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.6rem;
 }
-.search-card p {
+.search-card p.description {
   color: var(--muted);
-  margin-bottom: 1.5rem;
-  font-size: 0.93rem;
+  margin-bottom: 1.75rem;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  letter-spacing: 0.015em;
+  font-weight: 400;
+  max-width: 680px;
 }
 
 textarea#query {
@@ -108,6 +112,18 @@ button#search-btn {
 }
 button#search-btn:hover { background: var(--accent-hover); }
 button#search-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+.supported-note {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255,255,255,0.03);
+  font-size: 0.78rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0.8;
+}
 
 /* ─── Progress panel ──────────────────────────────────────────────────── */
 #progress-panel {

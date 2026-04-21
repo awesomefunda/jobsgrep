@@ -6,6 +6,7 @@
 
   const queryEl        = $('query');
   const searchBtn      = $('search-btn');
+
   const progressPanel  = $('progress-panel');
   const progressBar    = document.querySelector('.progress-bar');
   const stageLabel     = $('progress-stage-label');
@@ -23,19 +24,16 @@
 
   const historyPanel    = $('history-panel');
   const historyList     = $('history-list');
-  const trendingPanel   = $('trending-panel');
-  const trendingList    = $('trending-skills-list');
 
   let currentTaskId  = null;
   let eventSource    = null;
   let elapsedTimer   = null;
   let searchStart    = null;
 
-  const STAGE_ORDER = ['parsing', 'searching', 'scoring', 'reporting'];
+  const STAGE_ORDER = ['parsing', 'searching', 'reporting'];
   const STAGE_LABELS = {
     parsing:   'Parsing your query…',
-    searching: 'Searching job boards…',
-    scoring:   'Scoring matches…',
+    searching: 'Searching local index…',
     reporting: 'Building your report…',
   };
 
@@ -65,20 +63,10 @@
     // Build footer text
     const footerSources = $('footer-sources');
     if (footerSources) {
-      footerSources.textContent = sources.map(s => s.name).join(', ');
+      const names = sources.map(s => s.name);
+      if (!names.includes('Google Jobs')) names.push('Google Jobs');
+      footerSources.textContent = names.join(', ');
     }
-  }).catch(() => {});
-
-  // ─── Trending skills (landing page) ─────────────────────────────────────
-  fetch('/api/trending-skills').then(r => r.json()).then(skills => {
-    if (!skills || !skills.length) return;
-    const max = skills[0].count || 1;
-    trendingList.innerHTML = skills.map(item => {
-      const pct = Math.round((item.count / max) * 100);
-      return `<span class="skill-chip" title="${item.count} mentions"
-                style="--bar:${pct}%">${escHtml(item.skill)}<em>${item.count}</em></span>`;
-    }).join('');
-    trendingPanel.style.display = 'block';
   }).catch(() => {});
 
   // ─── Search history ──────────────────────────────────────────────────
@@ -130,21 +118,22 @@
   async function startSearch() {
     const query = queryEl.value.trim();
     if (!query) { showToast('Please enter a job search query.'); return; }
+    const skipScoring = true;
 
     searchBtn.disabled = true;
     progressPanel.style.display = 'block';
     resultsPanel.style.display = 'none';
-    trendingPanel.style.display = 'none';
     resetProgress();
     startElapsedTimer();
 
     // POST /api/search
     let taskId;
     try {
+      const body = { query, skip_scoring: skipScoring };
       const resp = await fetch('/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify(body),
       });
       if (!resp.ok) {
         const err = await resp.json();
@@ -159,18 +148,19 @@
       return;
     }
 
-    // SSE stream — pass query so Vercel can re-run search if cross-instance
+    // SSE stream — pass query so Vercel can re-run search cross-instance
     openStream(taskId, query);
   }
 
   function openStream(taskId, query) {
     if (eventSource) eventSource.close();
-    const streamUrl = query
-      ? `/api/stream/${taskId}?query=${encodeURIComponent(query)}`
-      : `/api/stream/${taskId}`;
+    let streamUrl = `/api/stream/${taskId}`;
+    const params = [];
+    if (query) params.push(`query=${encodeURIComponent(query)}`);
+    if (params.length) streamUrl += '?' + params.join('&');
     eventSource = new EventSource(streamUrl);
 
-    const stages = ['parsing', 'searching', 'scoring', 'reporting'];
+    const stages = ['parsing', 'searching', 'reporting'];
     let stageIdx = 0;
 
     eventSource.addEventListener('progress', e => {
@@ -252,11 +242,10 @@
     progressPanel.style.display = 'none';
     resultsPanel.style.display = 'block';
 
-    resultsSummary.textContent =
-      `Found ${data.scored_jobs} matching jobs from ${data.total_jobs} total`;
+    resultsSummary.textContent = `Found ${data.total_jobs} total jobs.`;
 
     // Download button — only show when there are actual results
-    if (data.download_url && data.scored_jobs > 0) {
+    if (data.download_url && (data.scored_jobs > 0 || data.total_jobs > 0)) {
       downloadBtn.href = data.download_url;
       downloadBtn.style.display = 'inline-flex';
     }
@@ -264,11 +253,12 @@
     // Hot skills
     if (data.hot_skills && data.hot_skills.length) {
       renderHotSkills(data.hot_skills);
+    } else {
+      hotSkillsPanel.style.display = 'none';
     }
 
     // Preview top 10
     try {
-      // We don't have a preview endpoint yet — show a placeholder
       renderPreview(data);
     } catch (_) {}
   }
@@ -285,28 +275,40 @@
   }
 
   function renderPreview(data) {
-    const hasJobs = data.scored_jobs > 0;
-    const downloadLink = hasJobs && data.download_url
-      ? `<div style="margin-top:1rem">
-           <a href="${data.download_url}" class="download-btn" download>
-             ⬇ Download Excel Report
-           </a>
-         </div>`
-      : `<div style="font-size:0.88rem; color:var(--muted); margin-top:0.5rem;">
-           No matching jobs found. Try broadening your search.
-         </div>`;
-    jobsBody.innerHTML = `
+    const hasJobs = data.total_jobs > 0;
+    const message = `${data.total_jobs} jobs found matching your query.`;
+    const jobs = data.preview_jobs || [];
+
+    let rowsHtml = '';
+    if (jobs.length > 0) {
+      rowsHtml = jobs.map(j => `
+        <tr>
+          <td class="company">${escHtml(j.company)}</td>
+          <td class="title"><a href="${j.url}" target="_blank">${escHtml(j.title)}</a></td>
+          <td><span class="source-tag">${escHtml(j.source)}</span></td>
+        </tr>
+      `).join('');
+    }
+
+    const downloadRow = `
       <tr>
-        <td colspan="5" style="text-align:center; padding: 2rem; color: var(--muted);">
+        <td colspan="3" style="text-align:center; padding: 2rem; color: var(--muted); border-top: 2px solid var(--border);">
           <div style="font-size:1.1rem; margin-bottom:0.5rem;">
-            ${data.scored_jobs} jobs matched your query
+            ${message}
           </div>
           <div style="font-size:0.88rem;">
             Sources: ${(data.sources_searched || []).join(', ')}
           </div>
-          ${downloadLink}
+          ${hasJobs && data.download_url ? `
+          <div style="margin-top:1rem">
+            <a href="${data.download_url}" class="download-btn" download>
+              ⬇ Download Excel Tracker (${data.total_jobs} jobs)
+            </a>
+          </div>` : ''}
         </td>
       </tr>`;
+
+    jobsBody.innerHTML = rowsHtml + downloadRow;
   }
 
   // ─── Stage management ────────────────────────────────────────────────

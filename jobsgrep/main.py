@@ -126,10 +126,10 @@ def _load_seed_cache() -> None:
     if seeded:
         logger.info("seeded %d cache file(s) from data/seed/", seeded)
 
-    # Prime the in-memory label index so fuzzy scans skip full-file reads
+    # Prime the in-memory label index AND master job list
     from .job_cache import prime_label_index
     indexed = prime_label_index()
-    logger.info("label index primed: %d entries", indexed)
+    logger.info("label index and master list primed: %d entries indexed", indexed)
 
 
 @asynccontextmanager
@@ -229,10 +229,11 @@ def _task_response(task: SearchTask) -> StatusResponse:
         sources_searched=task.sources_searched,
         jobs_per_source=task.jobs_per_source,
         hot_skills=task.hot_skills,
+        preview_jobs=getattr(task, "_preview_jobs", []),
     )
 
 
-async def _run_search(task_id: str, query: str, resume_text: str | None) -> None:
+async def _run_search(task_id: str, query: str, resume_text: str | None, skip_scoring: bool = False) -> None:
     """Background task: parse → search → score → report."""
     import os as _os
     from urllib.parse import quote as _quote
@@ -254,13 +255,24 @@ async def _run_search(task_id: str, query: str, resume_text: str | None) -> None
     settings = get_settings()
 
     try:
-        # Phase 0: parse query
+        # Phase 0: guardrail — reject non-tech queries immediately
+        from .nlp.parser import is_out_of_scope, OUT_OF_SCOPE_MESSAGE
+        if is_out_of_scope(query):
+            task.status = TaskStatus.COMPLETE
+            task.progress_message = OUT_OF_SCOPE_MESSAGE
+            task.total_jobs_found = 0
+            return
+
+        # Phase 1: parse query
         from .job_cache import (
             cache_key as _cache_key,
             get as _cache_get,
             store as _cache_store,
             get_scored as _get_scored,
             get_scored_fuzzy as _get_scored_fuzzy,
+            store_scored as _store_scored,
+            _compute_hot_skills_from_jobs,
+            get_all_cached_jobs,
         )
         from .nlp.parser import _fallback_parse
 
@@ -282,168 +294,69 @@ async def _run_search(task_id: str, query: str, resume_text: str | None) -> None
             task.parsed_query = parsed
             _ck = _cache_key(parsed)
 
-        # ── Phase 1a: scored cache hit → skip sources AND LLM entirely ──────
-        # Try exact key first, then fuzzy title-overlap match against seed files.
-        if cache_result is not None:
-            pre_scored, hot_skills = cache_result
-            logger.info("scored cache hit for task %s: %d jobs", task_id, len(pre_scored))
-            task.total_jobs_found = len(pre_scored)
-            task.total_jobs_scored = len(pre_scored)
-            task.sources_searched = ["scored_cache"]
-            task.jobs_per_source = {"scored_cache": len(pre_scored)}
-            task.hot_skills = hot_skills
-            await update(TaskStatus.REPORTING, "Building report from pre-scored results...")
+        # ── Phase 1: Filter from Master Cache (Global Search) ───────────────
+        await update(TaskStatus.SEARCHING, "Searching in-memory index...")
+
+        from .job_cache import search_index
+        from .scoring.engine import create_unscored_results, filter_jobs
+
+        # Search by parsed title words, not raw query text.
+        # Raw query contains location/filler words ("in usa", "jobs near me")
+        # that don't appear in job content and cause the AND to return far too
+        # few results (e.g. "software engineer in usa" → AND on "usa" = 18 hits).
+        index_query = " ".join(parsed.titles + parsed.title_variations) if parsed.titles else query
+        filtered = search_index(index_query)
+        master_count = len(get_all_cached_jobs())
+
+        # Strip country-level location terms before filtering — job records store
+        # cities ("San Francisco, CA"), never countries, so "United States" / "USA"
+        # as a location would eliminate every result.
+        _BROAD_GEOS = frozenset({"united states", "usa", "us", "america", "united states of america"})
+        effective_locations = [l for l in parsed.locations if l.lower() not in _BROAD_GEOS]
+
+        # Apply semantic title/location filtering so keyword overlap doesn't
+        # return wrong-role jobs (e.g. "software director" should not yield
+        # Software Engineer results just because both share "software").
+        if filtered and (parsed.titles or effective_locations or parsed.exclude_keywords):
+            from dataclasses import replace as _dc_replace
+            import copy as _copy
+            _parsed_copy = parsed.model_copy(update={"locations": effective_locations})
+            filtered = filter_jobs(filtered, _parsed_copy)
+
+        if filtered:
+            logger.info("index hit for task %s: %d jobs found from %d total", 
+                        task_id, len(filtered), master_count)
+            task.total_jobs_found = len(filtered)
+            task.sources_searched = ["master_cache"]
+            task.jobs_per_source = {"master_cache": len(filtered)}
+
+            # Store small preview for UI
+            task._preview_jobs = [ # type: ignore
+                {"company": j.company, "title": j.title, "url": j.url, "source": j.source}
+                for j in filtered[:20]
+            ]
+            await update(TaskStatus.REPORTING, "Building report from filtered results...")
             task.completed_at = datetime.now(timezone.utc)
-            if pre_scored:
-                from .report.excel import generate_report
-                report_path = generate_report(pre_scored, task, _REPORTS_DIR)
-                task.download_url = _download_url()
-
-            from .history import record_search
-            record_search(query, task.total_jobs_found, len(pre_scored), task.sources_searched)
-
+            unscored = create_unscored_results(filtered)
+            report_path = generate_report(unscored, task, _REPORTS_DIR)
+            task.download_url = _download_url()
+            task._report_path = str(report_path) # type: ignore
+            
             task.status = TaskStatus.COMPLETE
-            task.progress_message = f"Done! Found {len(pre_scored)} matching jobs (instant)."
-            _tasks[task_id]._report_path = str(report_path)  # type: ignore[attr-defined]
-            return
-
-        # ── Phase 1b: raw job cache hit → score only (no source calls) ──────
-        cached_jobs = _cache_get(_ck)
-        if cached_jobs is not None:
-            logger.info("raw cache hit for task %s: %d jobs", task_id, len(cached_jobs))
-            task.total_jobs_found = len(cached_jobs)
-            task.sources_searched = ["job_cache"]
-            task.jobs_per_source = {"job_cache": len(cached_jobs)}
-
-            await update(TaskStatus.SCORING, f"Scoring {len(cached_jobs)} cached jobs...")
-
-            async def progress_cb_cached(msg: str) -> None:
-                task.progress_message = msg
-
-            scored = await score_jobs(cached_jobs, parsed, progress_cb=progress_cb_cached)
-            task.total_jobs_scored = len(scored)
-
-            # Persist scored results (store_scored precomputes hot_skills)
-            from .job_cache import store_scored as _store_scored, _compute_hot_skills_from_jobs
-            if scored:
-                _store_scored(_ck, scored, source="live_search", label=query)
-            task.hot_skills = _compute_hot_skills_from_jobs(scored)
-
-            await update(TaskStatus.REPORTING, "Generating Excel report...")
-            task.completed_at = datetime.now(timezone.utc)
-            if scored:
-                from .report.excel import generate_report
-                report_path = generate_report(scored, task, _REPORTS_DIR)
-                task.download_url = _download_url()
-                _tasks[task_id]._report_path = str(report_path)  # type: ignore[attr-defined]
-
+            task.progress_message = f"Done! Found {len(filtered)} matching jobs in cache."
+            
             from .history import record_search
-            record_search(query, task.total_jobs_found, len(scored), task.sources_searched)
-
-            task.status = TaskStatus.COMPLETE
-            task.progress_message = f"Done! Found {len(scored)} matching jobs."
+            record_search(query, task.total_jobs_found, task.total_jobs_found, task.sources_searched)
             return
-
-        # ── Phase 1c: live search (cache miss) ────────────────────────────────
-        # Phase 1: search all enabled sources in parallel
-        await update(TaskStatus.SEARCHING, "Searching job sources...")
-        enabled = get_enabled_sources()
-
-        source_map = {
-            "greenhouse": GreenhouseSource(),
-            "lever": LeverSource(),
-            "ashby": AshbySource(),
-            "hn_hiring": HNHiringSource(),
-            "yc_companies": YCCompaniesSource(),
-            "usajobs": USAJobsSource(),
-        }
-        if settings.scraping_allowed:
-            try:
-                from .sources.jobspy_source import JobSpySource
-                source_map["jobspy"] = JobSpySource()
-            except Exception:
-                pass
-            try:
-                from .sources.levels_fyi import LevelsFYISource
-                source_map["levels_fyi"] = LevelsFYISource()
-            except Exception:
-                pass
-            try:
-                from .sources.teamblind import TeamBlindSource
-                source_map["teamblind"] = TeamBlindSource()
-            except Exception:
-                pass
-
-        SOURCE_TIMEOUT = 90  # seconds per source
-
-        async def run_source(name: str, source) -> tuple[str, list]:
-            if name not in enabled:
-                return name, []
-            try:
-                task.progress_message = f"Searching {name}..."
-                jobs = await asyncio.wait_for(source.fetch_jobs(parsed), timeout=SOURCE_TIMEOUT)
-                return name, jobs
-            except asyncio.TimeoutError:
-                logger.warning("source %s timed out after %ds", name, SOURCE_TIMEOUT)
-                return name, []
-            except Exception as e:
-                logger.warning("source %s failed: %s", name, e)
-                return name, []
-
-        results = await asyncio.gather(*[run_source(n, s) for n, s in source_map.items()])
-
-        # Collect and deduplicate
-        all_jobs = []
-        seen_ids: set[str] = set()
-        for source_name, jobs in results:
-            if jobs:
-                task.jobs_per_source[source_name] = len(jobs)
-                task.sources_searched.append(source_name)
-                for j in jobs:
-                    if j.id not in seen_ids:
-                        seen_ids.add(j.id)
-                        all_jobs.append(j)
-
-        task.total_jobs_found = len(all_jobs)
-        logger.info("total unique jobs found: %d", len(all_jobs))
-
-        # Close HTTP clients
-        for source in source_map.values():
-            await source.close()
-
-        # Store in cache for future requests
-        if all_jobs:
-            _cache_store(_ck, all_jobs, source="live_search", label=query)
-
-        # Phase 2: score
-        await update(TaskStatus.SCORING, f"Scoring {len(all_jobs)} jobs...")
-
-        async def progress_cb(msg: str) -> None:
-            task.progress_message = msg
-
-        scored = await score_jobs(all_jobs, parsed, progress_cb=progress_cb)
-        task.total_jobs_scored = len(scored)
-
-        # Cache scored results (store_scored precomputes hot_skills)
-        from .job_cache import store_scored as _store_scored, _compute_hot_skills_from_jobs
-        if scored:
-            _store_scored(_ck, scored, source="live_search", label=query)
-        task.hot_skills = _compute_hot_skills_from_jobs(scored)
-
-        # Phase 3: generate report (only if there are results)
-        await update(TaskStatus.REPORTING, "Generating Excel report...")
-        task.completed_at = datetime.now(timezone.utc)
-        if scored:
-            report_path = generate_report(scored, task, _REPORTS_DIR)
-            task.download_url = f"/api/download/{task_id}"
-            _tasks[task_id]._report_path = str(report_path)  # type: ignore[attr-defined]
-
-        # Record in search history
-        from .history import record_search
-        record_search(query, task.total_jobs_found, len(scored), task.sources_searched)
-
-        task.status = TaskStatus.COMPLETE
-        task.progress_message = f"Done! Found {len(scored)} matching jobs."
+        else:
+            logger.info("master cache: no jobs matched filters for '%s' (out of %d total cached)",
+                        query, master_count)
+            task.total_jobs_found = 0
+            task.status = TaskStatus.COMPLETE
+            task.progress_message = "No matching jobs found in the local index. Try a broader search terms."
+            from .history import record_search
+            record_search(query, 0, 0, ["master_cache"])
+            return
 
     except Exception as e:
         logger.exception("search task %s failed", task_id)
@@ -475,7 +388,7 @@ async def start_search(body: SearchRequest, user: AuthDep, request: Request):
         )
 
     task_id = str(uuid.uuid4())
-    task = SearchTask(task_id=task_id, query=body.query)
+    task = SearchTask(task_id=task_id, query=body.query, skip_scoring=body.skip_scoring)
 
     async with _task_lock:
         _tasks[task_id] = task
@@ -483,7 +396,7 @@ async def start_search(body: SearchRequest, user: AuthDep, request: Request):
     import os as _os
     if not _os.environ.get("VERCEL"):
         # Local/PRIVATE: run in background, client polls or streams
-        asyncio.create_task(_run_search(task_id, body.query, body.resume_text))
+        asyncio.create_task(_run_search(task_id, body.query, body.resume_text, body.skip_scoring))
     # On Vercel: search is driven by the SSE stream connection (avoids cross-instance state)
 
     return SearchResponse(task_id=task_id, status=TaskStatus.QUEUED)
@@ -540,7 +453,7 @@ async def stream_progress(task_id: str, request: Request,
                     "event": "progress",
                     "data": task.model_dump_json(
                         include={"status", "progress_message", "total_jobs_found",
-                                 "total_jobs_scored", "sources_searched", "jobs_per_source"}
+                                 "sources_searched", "jobs_per_source"}
                     ),
                 }
             if task.status in (TaskStatus.COMPLETE, TaskStatus.FAILED):

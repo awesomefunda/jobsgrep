@@ -24,15 +24,23 @@ Return JSON matching this exact schema:
 }}
 
 Rules:
+- "locations" must be specific cities or metro areas (e.g. "San Francisco Bay Area", "New York City", "Seattle"). If the query mentions only a country ("usa", "united states", "us", "america") or no location at all, return locations as []. Never put country names in locations.
 - Normalize titles to canonical engineering forms before putting them in "titles":
   - "SWE", "software dev", "software developer" → "Software Engineer"
-  - "dev manager", "software manager", "engineering lead", "software development manager", "SDM" → "Engineering Manager"
+  - "dev manager", "software manager", "engineering lead", "software development manager", "SDM", "manager role", "manager position" → "Engineering Manager"
   - "Staff SWE", "staff engineer" → "Staff Software Engineer"
   - "Senior SWE", "Sr. Engineer", "senior engineer" → "Senior Software Engineer"
   - "MLE", "ML engineer", "machine learning engineer" → "Machine Learning Engineer"
   - "Dir of Eng", "engineering director", "director engineering" → "Director of Engineering"
   - "VP Eng", "VP of Eng" → "VP of Engineering"
   - "EM" (alone) → "Engineering Manager"
+  - "PM", "product manager", "APM", "associate PM" → "Product Manager"
+  - "Senior PM", "Sr. PM", "senior product manager" → "Senior Product Manager"
+  - "Principal PM", "principal product manager" → "Principal Product Manager"
+  - "GPM", "group product manager" → "Group Product Manager"
+  - "TPM", "technical program manager" → "Technical Program Manager"
+  - "program manager" (without "technical") → "Program Manager"
+- IMPORTANT: For management titles (Engineering Manager, Director, VP), skills_required MUST be empty [] unless specific technical skills are explicitly stated in the query. Do NOT invent skills like "software management", "team management", "leadership" as skills_required.
 - If the query says "Staff Engineer" also include "Staff Software Engineer", "Senior Staff Engineer", "Principal Engineer" in title_variations
 - If the query is for an IC (individual contributor) role, add management titles to exclude_keywords
 - If the query says "remote", set remote_ok=true and add "Remote" to locations

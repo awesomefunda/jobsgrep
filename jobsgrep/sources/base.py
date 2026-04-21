@@ -34,7 +34,7 @@ class BaseSource(ABC):
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
                 headers={"User-Agent": self.settings.user_agent},
-                timeout=30.0,
+                timeout=10.0,
                 follow_redirects=True,
             )
         return self._client

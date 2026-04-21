@@ -25,6 +25,8 @@ DEFAULT_BOARDS = [
     "scale", "labelbox", "snorkel",
     "benchling", "recursion",
     "figma", "miro", "whimsical",
+    # High-paying AI companies (confirmed Ashby)
+    "perplexity", "elevenlabs", "runway",
 ]
 
 _GQL_QUERY = """
@@ -72,7 +74,7 @@ class AshbySource(BaseSource):
             c.lower().replace(" ", "-") for c in query.target_companies
         ]))
 
-        sem = asyncio.Semaphore(4)
+        sem = asyncio.Semaphore(10)
 
         async def fetch_board(board: str) -> list[RawJob]:
             async with sem:

@@ -26,7 +26,17 @@ async def parse_query(query: str, resume_text: str | None = None) -> ParsedQuery
         logger.debug("parse cache hit: %s", query[:60])
         return _parse_cache[cache_key]
 
-    if not settings.groq_api_key and not settings.gemini_api_key:
+    # Run fallback parser first — if it finds a confident non-generic title
+    # (e.g. Engineering Manager, Director, VP, Staff SWE), trust it over the LLM.
+    # Weaker LLMs (Groq/Cerebras) frequently misclassify management queries as SWE.
+    _GENERIC_TITLES = {"Software Engineer", "Engineer"}
+    fallback = _fallback_parse(query)
+    if fallback.titles and not all(t in _GENERIC_TITLES for t in fallback.titles):
+        logger.info("fallback parser matched specific title %s — skipping LLM parse", fallback.titles)
+        _parse_cache[cache_key] = fallback
+        return fallback
+
+    if not settings.groq_api_key and not settings.gemini_api_key and not settings.cerebras_api_key:
         logger.warning("no LLM API key set — using basic fallback parser")
         result = _fallback_parse(query)
         _parse_cache[cache_key] = result
@@ -60,6 +70,70 @@ async def parse_query(query: str, resume_text: str | None = None) -> ParsedQuery
 
 import re
 
+# ─── Out-of-scope guardrail ───────────────────────────────────────────────────
+
+# Role words that are unambiguously non-tech. Only checked when NO tech signal
+# exists in the query, so "security engineer" or "technical writer" pass fine.
+_NON_TECH_ROLE_WORDS = frozenset({
+    # Outdoor / trades
+    "gardener", "landscaper", "plumber", "electrician", "carpenter",
+    "welder", "roofer", "hvac", "pipefitter", "mason", "painter", "tiler",
+    # Healthcare
+    "nurse", "nursing", "physician", "surgeon", "dentist", "pharmacist",
+    "paramedic", "radiologist", "optometrist", "midwife",
+    # Food service
+    "chef", "cook", "waiter", "waitress", "bartender", "barista",
+    # Agriculture
+    "farmer", "rancher", "horticulturist",
+    # Legal (non-tech)
+    "lawyer", "attorney", "paralegal",
+    # Transportation
+    "trucker", "driver", "pilot", "sailor",
+    # Service / facility
+    "cashier", "janitor", "custodian", "housekeeper", "cleaner",
+    # Entertainment / arts
+    "actor", "actress", "musician", "singer", "dancer",
+    # Automotive
+    "mechanic",
+    # Emergency services
+    "firefighter",
+})
+
+# Any of these words signals a tech query — overrides non-tech detection.
+_TECH_SIGNAL_WORDS = frozenset({
+    "software", "engineer", "developer", "programmer", "coder",
+    "data", "ml", "ai", "backend", "frontend", "fullstack",
+    "devops", "sre", "platform", "infrastructure", "cloud",
+    "security",  # "security engineer" is tech
+    "tech", "technical", "technology",
+    "product", "engineering", "architect", "analyst", "pm", "tpm", "apm",
+    "director", "manager", "vp", "cto", "ciso", "cpo",
+    "python", "java", "javascript", "typescript", "golang",
+    "kubernetes", "docker", "aws", "gcp", "azure",
+    "mobile", "ios", "android", "api", "database", "sql",
+    "startup", "saas", "fintech",
+})
+
+
+def is_out_of_scope(query: str) -> bool:
+    """Return True if the query is clearly not a tech job search.
+
+    Conservative: only fires when a non-tech role word is present AND no tech
+    signal word overrides it. Ambiguous queries always pass through.
+    """
+    words = frozenset(re.findall(r"[a-z]+", query.lower()))
+    if words & _TECH_SIGNAL_WORDS:
+        return False
+    return bool(words & _NON_TECH_ROLE_WORDS)
+
+
+OUT_OF_SCOPE_MESSAGE = (
+    "JobsGrep only covers tech roles in the USA right now. "
+    "Try searches like 'Software Engineer Bay Area', "
+    "'Engineering Manager remote', or 'Director of Engineering NYC'."
+)
+
+
 _LOCATION_ALIASES = {
     "bay area": "San Francisco Bay Area",
     "sf bay area": "San Francisco Bay Area",
@@ -87,9 +161,18 @@ _TITLE_CANONICAL = [
     # Order matters: more specific first
     (r"senior\s+director\s+of\s+engineering",           "Senior Director of Engineering"),
     (r"director\s+of\s+engineering|engineering\s+director|dir\s+of\s+eng", "Director of Engineering"),
+    (r"software\s+director|director\s+of\s+software(?:\s+engineering)?|tech(?:nology)?\s+director|technical\s+director", "Director of Engineering"),
     (r"vp\s+of\s+engineering|vp\s+eng",                 "VP of Engineering"),
+    (r"vp\s+of\s+product|vp\s+product",                 "VP of Product"),
+    (r"director\s+of\s+product|product\s+director",     "Director of Product"),
     (r"senior\s+engineering\s+manager",                 "Senior Engineering Manager"),
     (r"engineering\s+manager|dev\s+manager|software\s+development\s+manager|sdm\b|software\s+manager|tech\s+lead\s+manager|\bem\b", "Engineering Manager"),
+    (r"technical\s+program\s+manager|tpm\b",            "Technical Program Manager"),
+    (r"program\s+manager",                              "Program Manager"),
+    (r"principal\s+product\s+manager|principal\s+pm\b", "Principal Product Manager"),
+    (r"group\s+product\s+manager|gpm\b",                "Group Product Manager"),
+    (r"senior\s+product\s+manager|sr\.?\s+product\s+manager|senior\s+pm\b|sr\.?\s+pm\b", "Senior Product Manager"),
+    (r"product\s+manager|\bpm\b",                       "Product Manager"),
     (r"staff\s+software\s+engineer|staff\s+swe|staff\s+engineer",          "Staff Software Engineer"),
     (r"senior\s+software\s+engineer|senior\s+swe|sr\.?\s+software\s+engineer", "Senior Software Engineer"),
     (r"principal\s+software\s+engineer|principal\s+engineer",              "Principal Software Engineer"),
@@ -127,9 +210,7 @@ def _fallback_parse(query: str) -> ParsedQuery:
             titles.append(canonical)
             break  # first match wins
 
-    if not titles:
-        titles = ["Software Engineer"]
-
+    # If no title matched, we leave it empty to indicate broad search
     return ParsedQuery(
         titles=titles,
         title_variations=[],

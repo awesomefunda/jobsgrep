@@ -28,6 +28,30 @@ _mem: dict[str, dict] = {}          # raw jobs in-memory overlay
 _scored_mem: dict[str, dict] = {}   # scored jobs in-memory overlay
 # Lightweight label index: key → {label, hot_skills} — avoids reading full files during fuzzy scan
 _label_index: dict[str, dict] = {}
+# Global in-memory list of all unique jobs for fast filtering
+_master_job_list: list[RawJob] = []
+# Word-to-Job mapping for O(1) keyword lookup
+_inverted_index: dict[str, set[str]] = {} # word -> set of job_ids
+
+
+def _tokenize(text: str) -> set[str]:
+    """Simple tokenizer for indexing."""
+    import re
+    return set(re.findall(r"[a-z0-9]{3,}", text.lower()))
+
+
+def _index_job(job: RawJob) -> None:
+    """Add a job to the inverted index."""
+    global _inverted_index
+    # Index title, company, and location heavily
+    tokens = _tokenize(f"{job.title} {job.company} {job.location}")
+    # Index description more lightly (maybe first 500 chars)
+    tokens.update(_tokenize(job.description[:500]))
+    
+    for token in tokens:
+        if token not in _inverted_index:
+            _inverted_index[token] = set()
+        _inverted_index[token].add(job.id)
 
 
 def _cache_dir() -> Path:
@@ -118,6 +142,16 @@ def store(key: str, jobs: list[RawJob], source: str = "live_search", label: str 
         "jobs":       [j.model_dump() for j in jobs],
     }
     _mem[key] = entry
+    
+    # Update master list
+    global _master_job_list
+    seen_ids = set(j.id for j in _master_job_list)
+    for j in jobs:
+        if j.id not in seen_ids:
+            _master_job_list.append(j)
+            seen_ids.add(j.id)
+            _index_job(j)
+
     try:
         _entry_path(key).write_text(json.dumps(entry), encoding="utf-8")
         logger.info("cached %d jobs -> %s (source=%s)", len(jobs), key, source)
@@ -244,6 +278,13 @@ def get_scored_fuzzy(query: "ParsedQuery") -> "tuple[list, list] | None":
     for l in query.locations:
         query_loc_words |= _words(l)
 
+    # Compute location intent once, outside the loop
+    NON_LOC = _words("remote")
+    query_city_words = query_loc_words - NON_LOC
+    query_is_remote_only = query.remote_ok and not query_city_words
+    query_is_city_or_remote = query.remote_ok and query_city_words
+    query_is_city_only = not query.remote_ok and query_city_words
+
     best_key: str | None = None
     best_score = 0
 
@@ -275,17 +316,6 @@ def get_scored_fuzzy(query: "ParsedQuery") -> "tuple[list, list] | None":
 
             label_words = _words(label)
             stored_remote = "remote" in label.lower()
-
-            # Remote + location guard:
-            # - If query is remote-only → only match remote seeds
-            # - If query has specific city → only match seeds for that city
-            # - If query is "city OR remote" (remote_ok=True + city words) →
-            #   match either remote seeds OR seeds for that city
-            NON_LOC = _words("remote")
-            query_city_words = query_loc_words - NON_LOC
-            query_is_remote_only = query.remote_ok and not query_city_words
-            query_is_city_or_remote = query.remote_ok and query_city_words
-            query_is_city_only = not query.remote_ok and query_city_words
 
             if query_is_remote_only:
                 if not stored_remote:
@@ -399,6 +429,16 @@ def store_scored(key: str, jobs: "list", source: str = "prefetch", label: str = 
     }
     _scored_mem[key] = entry
     _label_index[key] = {"label": label, "hot_skills": hot_skills}
+    
+    # Update master list
+    global _master_job_list
+    seen_ids = set(j.id for j in _master_job_list)
+    for sj in jobs:
+        if sj.job.id not in seen_ids:
+            _master_job_list.append(sj.job)
+            seen_ids.add(sj.job.id)
+            _index_job(sj.job)
+
     try:
         path = _scored_dir() / f"{key}.json"
         path.write_text(json.dumps(entry), encoding="utf-8")
@@ -408,35 +448,53 @@ def store_scored(key: str, jobs: "list", source: str = "prefetch", label: str = 
 
 
 def prime_label_index() -> int:
-    """Read only label+hot_skills from scored cache files into _label_index.
-
-    Called at startup after seeds are copied to /tmp so that the first
-    get_scored_fuzzy() call uses memory instead of reading full JSON files.
-    Returns number of entries indexed.
+    """Read only label+hot_skills from scored cache files into _label_index,
+    and also populate the global _master_job_list for fast filtering.
     """
+    global _master_job_list
     count = 0
+    seen_ids = set(j.id for j in _master_job_list)
+
+    # 1. Load from scored cache (seeds)
     for path in _scored_dir().glob("*.json"):
         key = path.stem
-        if key in _label_index:
-            continue
         try:
-            # Read only first 512 bytes to get label — avoids loading full file
-            with path.open(encoding="utf-8") as f:
-                head = f.read(512)
-            import re as _re
-            m = _re.search(r'"label"\s*:\s*"([^"]*)"', head)
-            m2 = _re.search(r'"hot_skills"\s*:', head)
-            if m:
-                label = m.group(1)
-                # hot_skills may not fit in 512 bytes — do a full read only if needed
-                if m2:
-                    entry = json.loads(path.read_text(encoding="utf-8"))
-                    _label_index[key] = {"label": label, "hot_skills": entry.get("hot_skills", [])}
-                else:
-                    _label_index[key] = {"label": label, "hot_skills": []}
+            entry = json.loads(path.read_text(encoding="utf-8"))
+            
+            # Index label if not already there
+            if key not in _label_index:
+                label = entry.get("label", "")
+                _label_index[key] = {
+                    "label": label, 
+                    "hot_skills": entry.get("hot_skills", [])
+                }
                 count += 1
+            
+            # Load jobs into master list
+            for item in entry.get("jobs", []):
+                j_dict = item["job"]
+                if j_dict["id"] not in seen_ids:
+                    job = RawJob(**j_dict)
+                    _master_job_list.append(job)
+                    seen_ids.add(job.id)
+                    _index_job(job)
         except Exception:
             continue
+
+    # 2. Load from raw cache
+    for path in _cache_dir().glob("*.json"):
+        try:
+            entry = json.loads(path.read_text(encoding="utf-8"))
+            for j_dict in entry.get("jobs", []):
+                if j_dict["id"] not in seen_ids:
+                    job = RawJob(**j_dict)
+                    _master_job_list.append(job)
+                    seen_ids.add(job.id)
+                    _index_job(job)
+        except Exception:
+            continue
+            
+    logger.info("master job list primed with %d unique jobs", len(_master_job_list))
     return count
 
 
@@ -449,3 +507,51 @@ def _deserialize_scored(raw_list: list) -> list:
         except Exception:
             pass
     return out
+
+
+def get_all_cached_jobs() -> list[RawJob]:
+    """Aggregate all unique jobs from the raw job cache (uses in-memory master list)."""
+    if not _master_job_list:
+        prime_label_index()
+    return _master_job_list
+
+
+def search_index(query_text: str) -> list[RawJob]:
+    """Search the in-memory inverted index for matching jobs."""
+    if not _inverted_index:
+        prime_label_index()
+    
+    query_tokens = _tokenize(query_text)
+    if not query_tokens:
+        return _master_job_list
+    
+    # Start with all jobs (IDs)
+    matching_ids: set[str] = set()
+    
+    # We want jobs that match ALL query tokens (AND search)
+    # or most of them. Let's do AND for precision.
+    first = True
+    for token in query_tokens:
+        token_matches = _inverted_index.get(token, set())
+        if first:
+            matching_ids = token_matches
+            first = False
+        else:
+            matching_ids &= token_matches
+        if not matching_ids:
+            break
+            
+    # If AND returned nothing, try a more relaxed OR search but ranked
+    if not matching_ids:
+        from collections import Counter
+        id_counts: Counter = Counter()
+        for token in query_tokens:
+            for job_id in _inverted_index.get(token, set()):
+                id_counts[job_id] += 1
+        # Take jobs that match at least 2 tokens (if query has multiple)
+        min_matches = min(2, len(query_tokens)) if len(query_tokens) > 1 else 1
+        matching_ids = {jid for jid, count in id_counts.items() if count >= min_matches}
+
+    # Retrieve jobs from master list
+    job_map = {j.id: j for j in _master_job_list}
+    return [job_map[jid] for jid in matching_ids if jid in job_map]

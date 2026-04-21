@@ -21,6 +21,7 @@ logger = logging.getLogger("jobsgrep.prefetch")
 # scored immediately; the rest are staggered to spread API load.
 _DEFAULT_QUERIES = [
     "Software Engineer",
+    "Software Development Manager",
     "Senior Software Engineer",
     "Staff Software Engineer",
     "Backend Engineer",
@@ -28,12 +29,11 @@ _DEFAULT_QUERIES = [
     "Full Stack Engineer",
     "Machine Learning Engineer",
     "Data Engineer",
-    "Platform Engineer",
-    "DevOps Engineer",
+    "Engineering Manager",
 ]
 
 
-async def _prefetch_query(query: str) -> tuple[int, int]:
+async def _prefetch_query(query: str, skip_scoring: bool = False) -> tuple[int, int]:
     """Fetch + score one query. Returns (raw_job_count, scored_job_count)."""
     from .job_cache import cache_key, get as cache_get, store as cache_store
     from .job_cache import get_scored, store_scored
@@ -51,14 +51,18 @@ async def _prefetch_query(query: str) -> tuple[int, int]:
     key = cache_key(parsed)
 
     # ── 1. Check scored cache first (skip everything if warm) ──────────────
-    scored = get_scored(key)
-    if scored is not None:
-        logger.info("prefetch skip (scored cache hit): '%s' — %d scored jobs", query, len(scored))
-        return len(scored), len(scored)
+    if not skip_scoring:
+        scored = get_scored(key)
+        if scored is not None:
+            logger.info("prefetch skip (scored cache hit): '%s' — %d scored jobs", query, len(scored))
+            return len(scored), len(scored)
 
     # ── 2. Raw job cache hit → score only ──────────────────────────────────
     raw_jobs = cache_get(key)
     if raw_jobs is not None:
+        if skip_scoring:
+            logger.info("prefetch: raw cache hit '%s' (%d jobs), skipping scoring.", query, len(raw_jobs))
+            return len(raw_jobs), 0
         logger.info("prefetch: raw cache hit '%s' (%d jobs), scoring...", query, len(raw_jobs))
         scored = await score_jobs(raw_jobs, parsed)
         if scored:
@@ -108,6 +112,11 @@ async def _prefetch_query(query: str) -> tuple[int, int]:
 
     # Store raw jobs
     cache_store(key, all_jobs, source="prefetch", label=query)
+
+    if skip_scoring:
+        logger.info("prefetch: fetched %d jobs for '%s', scoring skipped.", len(all_jobs), query)
+        return len(all_jobs), 0
+
     logger.info("prefetch: fetched %d jobs for '%s', scoring...", len(all_jobs), query)
 
     # Score and store
@@ -119,12 +128,12 @@ async def _prefetch_query(query: str) -> tuple[int, int]:
     return len(all_jobs), len(scored)
 
 
-async def run_prefetch_cycle(queries: list[str], stagger_seconds: float = 20.0) -> None:
+async def run_prefetch_cycle(queries: list[str], stagger_seconds: float = 20.0, skip_scoring: bool = False) -> None:
     """Run one full prefetch cycle, staggered to be polite to source APIs."""
-    logger.info("prefetch cycle starting: %d queries", len(queries))
+    logger.info("prefetch cycle starting: %d queries (skip_scoring=%s)", len(queries), skip_scoring)
     for i, query in enumerate(queries):
         try:
-            raw, scored = await _prefetch_query(query)
+            raw, scored = await _prefetch_query(query, skip_scoring=skip_scoring)
             logger.debug("prefetch '%s': %d raw, %d scored", query, raw, scored)
         except Exception as e:
             logger.warning("prefetch '%s' error: %s", query, e)
@@ -138,6 +147,7 @@ async def start_prefetch_loop(
     queries: list[str] | None = None,
     interval_hours: float = 6.0,
     startup_delay_seconds: float = 15.0,
+    skip_scoring: bool = False,
 ) -> None:
     """Long-running asyncio task. Wire into FastAPI lifespan."""
     from .config import get_settings
@@ -149,15 +159,15 @@ async def start_prefetch_loop(
 
     effective_queries = queries or _DEFAULT_QUERIES
     logger.info(
-        "prefetch worker starting: %d queries, interval=%.1fh, startup delay=%.0fs",
-        len(effective_queries), interval_hours, startup_delay_seconds,
+        "prefetch worker starting: %d queries, interval=%.1fh, startup delay=%.0fs, skip_scoring=%s",
+        len(effective_queries), interval_hours, startup_delay_seconds, skip_scoring,
     )
 
     await asyncio.sleep(startup_delay_seconds)
 
     while True:
         try:
-            await run_prefetch_cycle(effective_queries)
+            await run_prefetch_cycle(effective_queries, skip_scoring=skip_scoring)
         except asyncio.CancelledError:
             logger.info("prefetch worker cancelled")
             return

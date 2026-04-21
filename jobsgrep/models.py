@@ -80,6 +80,8 @@ class JobScore(BaseModel):
     missing_skills: list[str] = Field(default_factory=list)
     red_flags: list[str] = Field(default_factory=list)
     salary_range: str | None = None
+    role_type: str = ""         # e.g. "AI Platform", "Agentic AI", "ML Engineer", "Solutions Architect"
+    seniority_level: str = ""   # e.g. "Junior", "Mid", "Senior", "Staff", "Principal", "Director"
 
 
 class ScoredJob(BaseModel):
@@ -93,6 +95,7 @@ class TaskStatus(str, Enum):
     QUEUED = "queued"
     PARSING = "parsing"
     SEARCHING = "searching"
+    SEARCH_COMPLETE = "search_complete"
     SCORING = "scoring"
     REPORTING = "reporting"
     COMPLETE = "complete"
@@ -104,6 +107,7 @@ class SearchTask(BaseModel):
     status: TaskStatus = TaskStatus.QUEUED
     query: str
     parsed_query: ParsedQuery | None = None
+    skip_scoring: bool = False
     progress_message: str = ""
     total_jobs_found: int = 0
     total_jobs_scored: int = 0
@@ -122,6 +126,7 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=5, max_length=1000,
                        description="Natural language job search query")
     resume_text: str | None = Field(None, description="Optional resume text for better scoring")
+    skip_scoring: bool = False
 
 
 class SearchResponse(BaseModel):
@@ -140,6 +145,7 @@ class StatusResponse(BaseModel):
     sources_searched: list[str] = Field(default_factory=list)
     jobs_per_source: dict[str, int] = Field(default_factory=dict)
     hot_skills: list[dict] = Field(default_factory=list)
+    preview_jobs: list[dict] = Field(default_factory=list)
 
 
 class SourceInfo(BaseModel):

@@ -9,14 +9,14 @@ from .base import BaseSource, job_id
 
 logger = logging.getLogger("jobsgrep.sources.greenhouse")
 
-# 50+ high-value tech company boards (reused from existing JobsGrep scout.py)
+# High-value tech company boards (verified Greenhouse users)
 DEFAULT_BOARDS = [
     "stripe", "figma", "notion", "miro", "canva", "dbt-labs", "airbyte",
     "huggingface", "cohere", "cloudflare", "databricks", "snowflake",
     "confluent", "hashicorp", "cockroachdb", "planetscale", "neon",
-    "vercel", "netlify", "supabase", "planetscale", "railway",
+    "vercel", "netlify", "supabase", "railway",
     "brex", "ramp", "plaid", "chime", "robinhood",
-    "duolingo", "grammarly", "notion", "loom", "miro",
+    "duolingo", "grammarly", "loom",
     "coreweave", "together", "modal", "replicate", "weights-biases",
     "scale", "anyscale", "mosaic", "predibase",
     "retool", "linear", "airtable", "coda",
@@ -26,6 +26,8 @@ DEFAULT_BOARDS = [
     "openai", "anthropic", "deepmind", "mistral",
     "benchling", "recursion", "insitro",
     "flexport", "convoy", "project44",
+    # High-paying AI companies (confirmed Greenhouse)
+    "elevenlabs", "groq", "glean",
 ]
 
 
@@ -44,7 +46,7 @@ class GreenhouseSource(BaseSource):
 
         # Fetch all boards concurrently (batched to respect rate limit)
         results: list[RawJob] = []
-        sem = asyncio.Semaphore(5)
+        sem = asyncio.Semaphore(10)
 
         async def fetch_board(board: str) -> list[RawJob]:
             async with sem:

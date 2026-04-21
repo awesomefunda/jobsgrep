@@ -35,12 +35,12 @@ _STATUS_OPTIONS = "New,Saved,Applied,Phone Screen,Technical,Onsite,Offer,Rejecte
 
 # ─── Column layout ────────────────────────────────────────────────────────────
 #
-#  ← JobsGrep auto-filled (cols 1–13) ──────────────────┐  ← Your tracking (cols 14–21) ──────────────────┐
-#  Rank Score Company Title Location Remote Salary URL  │  Status  Applied  Outreach  Response  Phone    │
-#  Date Source Matching Missing RedFlags                 │  Interview  Offer  Notes                       │
+#  ← JobsGrep auto-filled (cols 1–15) ─────────────────────────────────────────┐  ← Your tracking (cols 16–23) ──┐
+#  Rank Score Company Title RoleType Seniority Location Remote Salary URL Date  │  Status Applied Outreach …      │
+#  Source Matching Missing RedFlags                                              │                                 │
 #
 _JOB_HEADERS = [
-    "Rank", "Score", "Company", "Title", "Location", "Remote?",
+    "Rank", "Score", "Company", "Title", "Role Type", "Seniority", "Location", "Remote?",
     "Salary", "Job URL", "Date Posted", "Source",
     "Matching Skills", "Missing Skills", "Red Flags",
 ]
@@ -50,7 +50,7 @@ _TRACK_HEADERS = [
 ]
 _ALL_HEADERS  = _JOB_HEADERS + _TRACK_HEADERS
 _TRACK_START  = len(_JOB_HEADERS) + 1   # first tracking column index (1-based)
-_URL_COL      = 8                        # Job URL column index
+_URL_COL      = 10                       # Job URL column index (after adding Role Type + Seniority)
 
 
 def _hdr(ws, values: list[str]) -> None:
@@ -130,6 +130,8 @@ def _sheet_tracker(wb: Workbook, scored_jobs: list[ScoredJob]) -> None:
             round(score.fit_score, 2),
             job.company,
             job.title,
+            score.role_type,
+            score.seniority_level,
             job.location,
             "Yes" if job.remote else "No",
             score.salary_range or job.salary_text or "",
@@ -173,25 +175,27 @@ def _sheet_tracker(wb: Workbook, scored_jobs: list[ScoredJob]) -> None:
         1:  6,   # Rank
         2:  7,   # Score
         3: 22,   # Company
-        4: 32,   # Title
-        5: 20,   # Location
-        6:  8,   # Remote?
-        7: 16,   # Salary
-        8: 38,   # Job URL
-        9: 12,   # Date Posted
-        10: 16,  # Source
-        11: 30,  # Matching Skills
-        12: 26,  # Missing Skills
-        13: 24,  # Red Flags
+        4: 30,   # Title
+        5: 18,   # Role Type
+        6: 11,   # Seniority
+        7: 18,   # Location
+        8:  8,   # Remote?
+        9: 16,   # Salary
+        10: 38,  # Job URL
+        11: 12,  # Date Posted
+        12: 16,  # Source
+        13: 28,  # Matching Skills
+        14: 24,  # Missing Skills
+        15: 24,  # Red Flags
         # Tracking
-        14: 14,  # Status
-        15: 13,  # Applied Date
-        16: 14,  # Outreach Sent
-        17: 12,  # Response?
-        18: 14,  # Phone Screen
-        19: 13,  # Interview
-        20: 12,  # Offer
-        21: 30,  # Notes
+        16: 14,  # Status
+        17: 13,  # Applied Date
+        18: 14,  # Outreach Sent
+        19: 12,  # Response?
+        20: 14,  # Phone Screen
+        21: 13,  # Interview
+        22: 12,  # Offer
+        23: 30,  # Notes
     })
 
     ws.row_dimensions[1].height = 32

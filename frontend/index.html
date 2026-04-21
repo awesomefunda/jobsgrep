@@ -19,27 +19,22 @@
 
 <main>
 
-  <!-- Search card -->
   <div class="search-card">
     <h1>Find your next role</h1>
-    <p>Describe the job you want in plain English. JobsGrep searches <strong>Greenhouse, Lever, Ashby, Workable, Recruitee, HN Who's Hiring, YC companies, and more</strong> — scores every listing against your query with AI — and delivers a <strong>ranked Excel report</strong> with fit scores, required skills, and salary data, ready to download in seconds.</p>
+    <p class="description">A high-performance gateway to thousands of active tech roles. We monitor the recruitment boards of Greenhouse, Lever, Ashby, YC hiring networks, and Google Jobs to build a massive, real-time index. Skip the noise—get a clean, organized Excel tracker with every lead you need, instantly.</p>
 
     <textarea id="query" rows="3" autofocus></textarea>
 
-    <div class="row">
+    <div class="row" style="margin-top:0.75rem; align-items: center; gap: 1rem;">
       <button id="search-btn">Search →</button>
     </div>
     <div style="margin-top:0.6rem; font-size:0.78rem; color:var(--muted)">
       Tip: press Ctrl+Enter to search
     </div>
-  </div>
-
-  <!-- Trending skills (shown on load, hidden during search) -->
-  <div id="trending-panel" style="display:none; width:100%">
-    <div style="font-size:0.78rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.5rem;">
-      Trending Skills Right Now
+    <div class="supported-note">
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      Currently optimized for US tech roles. More regions and job types coming soon.
     </div>
-    <div id="trending-skills-list" style="display:flex; flex-wrap:wrap; gap:0.4rem;"></div>
   </div>
 
   <!-- Search history (hidden when empty) -->
@@ -73,25 +68,18 @@
         <div class="step-icon">1</div>
         <div class="step-body">
           <div class="step-label">Parsing query</div>
-          <div class="step-detail">Understanding your requirements with AI</div>
+          <div class="step-detail">Understanding your requirements</div>
         </div>
       </div>
       <div class="stage-step" data-stage="searching">
         <div class="step-icon">2</div>
         <div class="step-body">
-          <div class="step-label">Searching sources</div>
-          <div class="step-detail" id="searching-detail">Querying job boards in parallel…</div>
-        </div>
-      </div>
-      <div class="stage-step" data-stage="scoring">
-        <div class="step-icon">3</div>
-        <div class="step-body">
-          <div class="step-label">Scoring matches</div>
-          <div class="step-detail" id="scoring-detail">LLM evaluating fit for each job…</div>
+          <div class="step-label">Searching local index</div>
+          <div class="step-detail" id="searching-detail">Filtering from master job cache…</div>
         </div>
       </div>
       <div class="stage-step" data-stage="reporting">
-        <div class="step-icon">4</div>
+        <div class="step-icon">3</div>
         <div class="step-body">
           <div class="step-label">Building report</div>
           <div class="step-detail">Generating your Excel file</div>
@@ -110,9 +98,11 @@
         <h2>Results</h2>
         <div id="results-summary" style="font-size:0.85rem; color:var(--muted); margin-top:2px;"></div>
       </div>
-      <a id="download-btn" class="download-btn" href="#" download style="display:none">
-        ⬇ Download Excel Report
-      </a>
+      <div style="display: flex; gap: 0.75rem; align-items: center;">
+        <a id="download-btn" class="download-btn" href="#" download style="display:none">
+          ⬇ Download Excel Report
+        </a>
+      </div>
     </div>
 
     <!-- Hot skills panel (shown after results load) -->
@@ -126,8 +116,6 @@
     <table class="jobs-table">
       <thead>
         <tr>
-          <th>#</th>
-          <th>Score</th>
           <th>Company</th>
           <th>Title</th>
           <th>Source</th>
@@ -141,8 +129,8 @@
 </main>
 
 <footer>
-  Data sourced from public APIs: <span id="footer-sources">Greenhouse, Lever, Ashby, HN, YC</span>.
-  No scraping in this mode unless LOCAL. &nbsp;|&nbsp;
+  Data sourced from public APIs and recruitment boards: <span id="footer-sources">Greenhouse, Lever, Ashby, Recruitee, Workable, HN Hiring, YC, USAJobs, Google Jobs, JobSpy, Levels.fyi, TeamBlind</span>.
+  &nbsp;|&nbsp;
   <a href="/docs">API Docs</a> &nbsp;|&nbsp;
   <a href="/api/health">Health</a> &nbsp;|&nbsp;
   <a href="https://github.com/awesomefanda" target="_blank">GitHub</a>

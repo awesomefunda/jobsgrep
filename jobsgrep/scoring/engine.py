@@ -97,6 +97,13 @@ def keyword_filter(jobs: list[RawJob], query: ParsedQuery) -> list[RawJob]:
     return filtered
 
 
+_MANAGEMENT_SKILLS = frozenset({
+    "management", "leadership", "software management", "team management",
+    "people management", "engineering management", "project management",
+    "program management", "stakeholder management",
+})
+
+
 def skills_prescore(jobs: list[RawJob], query: ParsedQuery) -> list[RawJob]:
     """Drop jobs that mention none of the required skills before any LLM call.
 
@@ -105,11 +112,18 @@ def skills_prescore(jobs: list[RawJob], query: ParsedQuery) -> list[RawJob]:
     ~50-70% of LLM calls on skill-specific queries with zero quality loss.
 
     Without required skills the full list passes through unchanged.
+    Skips filtering if all skills are management/leadership terms (they won't appear
+    verbatim in job descriptions and would incorrectly drop all valid results).
     """
     if not query.skills_required:
         return jobs
 
     skills = [s.lower().strip() for s in query.skills_required]
+
+    # If every "required skill" is a soft management term, skip the filter entirely —
+    # these come from parser errors on management-title queries and would zero out results.
+    if all(s in _MANAGEMENT_SKILLS for s in skills):
+        return jobs
     kept: list[RawJob] = []
 
     for job in jobs:
@@ -132,6 +146,7 @@ async def score_jobs(
     jobs: list[RawJob],
     query: ParsedQuery,
     progress_cb=None,
+    resume_text: str | None = None,
 ) -> list[ScoredJob]:
     """Score all jobs against query. Returns only jobs meeting MIN_FIT_SCORE."""
     settings = get_settings()
@@ -156,7 +171,9 @@ async def score_jobs(
         logger.info("LLM cap: keeping top %d of %d jobs by title relevance", MAX_LLM, len(jobs))
         jobs = jobs[:MAX_LLM]
 
-    requirements = build_requirements_block(query)
+    # Build requirements block; include resume summary for personalized scoring
+    resume_summary = resume_text[:600].replace("\n", " ") if resume_text else None
+    requirements = build_requirements_block(query, resume_summary=resume_summary)
     rh = _req_hash(requirements)
 
     # Step 2: split into cache hits and misses
@@ -246,6 +263,8 @@ def _parse_scores(raw: str, expected: int) -> list[JobScore]:
                 missing_skills=item.get("missing_skills", []),
                 red_flags=item.get("red_flags", []),
                 salary_range=item.get("salary_range"),
+                role_type=item.get("role_type", ""),
+                seniority_level=item.get("seniority_level", ""),
             ))
         while len(scores) < expected:
             scores.append(JobScore(fit_score=0.0, reasoning="no score returned"))
@@ -253,3 +272,115 @@ def _parse_scores(raw: str, expected: int) -> list[JobScore]:
     except Exception as e:
         logger.warning("score parse failed: %s", e)
         return [JobScore(fit_score=0.0, reasoning="parse error") for _ in range(expected)]
+
+
+def create_unscored_results(jobs: list[RawJob]) -> list[ScoredJob]:
+    """Create ScoredJob objects with a default 1.0 score for all jobs (skips LLM)."""
+    return [
+        ScoredJob(
+            job=j,
+            score=JobScore(
+                fit_score=1.0,
+                reasoning="Matched via keyword filtering from master cache.",
+            )
+        )
+        for j in jobs
+    ]
+
+
+# City keyword map: canonical location name → substrings that appear in real job
+# location strings (which vary wildly: "San Francisco, CA", "New York, NY", etc.)
+_CITY_MATCH: dict[str, list[str]] = {
+    "san francisco bay area": [
+        "san francisco", "bay area", "palo alto", "menlo park", "mountain view",
+        "sunnyvale", "santa clara", "san jose", "redwood city", "burlingame",
+        "oakland", "berkeley", "south san francisco", "foster city",
+    ],
+    "new york city": ["new york", "nyc", "brooklyn", "manhattan", "queens"],
+    "seattle":       ["seattle", "bellevue", "redmond", "kirkland"],
+    "austin, texas": ["austin"],
+    "los angeles":   ["los angeles", "santa monica", "culver city", "west hollywood"],
+    "boston":        ["boston", "cambridge, ma", "cambridge, massachusetts"],
+    "chicago":       ["chicago"],
+    "denver":        ["denver", "boulder, co"],
+    "atlanta":       ["atlanta"],
+    "san diego":     ["san diego"],
+    "miami":         ["miami"],
+    "phoenix":       ["phoenix"],
+    "portland":      ["portland"],
+    "washington dc": ["washington, dc", "washington dc", "arlington, va", "bethesda"],
+}
+
+
+def _loc_matches(canonical_lower: str, job_loc_lower: str) -> bool:
+    """Return True if job_loc matches the canonical location."""
+    terms = _CITY_MATCH.get(canonical_lower)
+    if terms:
+        return any(t in job_loc_lower for t in terms)
+    # Fallback: first significant word of the canonical location
+    first = canonical_lower.split(",")[0].strip()
+    return first in job_loc_lower if len(first) >= 4 else False
+
+
+def filter_jobs(jobs: list[RawJob], query: ParsedQuery) -> list[RawJob]:
+    """Filter jobs based on title, location, and required skills keywords."""
+    import re
+
+    all_titles = query.titles + query.title_variations
+    is_generic = not all_titles or (len(all_titles) == 1 and all_titles[0] == "Software Engineer" and len(query.raw_query.split()) < 3)
+
+    filtered_jobs = jobs
+
+    # 1. Title filtering
+    if all_titles and not is_generic:
+        query_words = set()
+        for t in all_titles:
+            query_words.update(re.findall(r"[a-z]{3,}", t.lower()))
+
+        if query_words:
+            res = []
+            for j in filtered_jobs:
+                title_words = set(re.findall(r"[a-z]{3,}", j.title.lower()))
+                if title_words & query_words:
+                    res.append(j)
+            filtered_jobs = res
+
+    # 2. Location filtering — uses city keyword map so "San Francisco Bay Area"
+    # matches jobs stored as "San Francisco, CA" / "San Francisco, California" etc.
+    actual_locations = [l.lower() for l in query.locations if l.lower() != "remote"]
+    if actual_locations:
+        res = []
+        for j in filtered_jobs:
+            j_loc = j.location.lower()
+            if any(_loc_matches(loc, j_loc) for loc in actual_locations):
+                res.append(j)
+            elif query.remote_ok and (j.remote or "remote" in j_loc):
+                res.append(j)
+        filtered_jobs = res
+    elif query.remote_ok:
+        filtered_jobs = [
+            j for j in filtered_jobs
+            if j.remote or "remote" in j.location.lower()
+        ]
+
+    # 3. Skills filtering (OR match)
+    if query.skills_required:
+        skills = [s.lower().strip() for s in query.skills_required]
+        res = []
+        for j in filtered_jobs:
+            text = f"{j.title} {j.description}".lower()
+            if any(s in text for s in skills):
+                res.append(j)
+        filtered_jobs = res
+
+    # 4. Exclude keywords
+    if query.exclude_keywords:
+        exclude = [kw.lower() for kw in query.exclude_keywords]
+        res = []
+        for j in filtered_jobs:
+            text = f"{j.title} {j.description}".lower()
+            if not any(kw in text for kw in exclude):
+                res.append(j)
+        filtered_jobs = res
+    
+    return filtered_jobs

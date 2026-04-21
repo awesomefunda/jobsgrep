@@ -271,3 +271,7 @@ jobsgrep/
 pip install -e ".[dev]"
 pytest tests/ -v
 ```
+
+## License
+
+MIT © [Harsh Kumar](https://github.com/awesomefanda)
