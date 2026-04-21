@@ -53,14 +53,13 @@ async def _prefetch_query(query: str, skip_scoring: bool = False) -> tuple[int, 
     parsed = await parse_query(query, None)
     key = cache_key(parsed)
 
-    # ── 1. Check scored cache first (skip everything if warm) ──────────────
-    if not skip_scoring:
-        scored = get_scored(key)
-        if scored is not None:
-            logger.info("prefetch skip (scored cache hit): '%s' — %d scored jobs", query, len(scored))
-            return len(scored), len(scored)
+    # ── 1. Skip if we already have data (scored or raw cache) ──────────────
+    scored_hit = get_scored(key)
+    if scored_hit is not None:
+        jobs_list, _ = scored_hit
+        logger.info("prefetch skip (scored cache hit): '%s' — %d jobs", query, len(jobs_list))
+        return len(jobs_list), len(jobs_list)
 
-    # ── 2. Raw job cache hit → score only ──────────────────────────────────
     raw_jobs = cache_get(key)
     if raw_jobs is not None:
         if skip_scoring:
@@ -156,9 +155,7 @@ async def start_prefetch_loop(
     from .config import get_settings
     settings = get_settings()
 
-    if settings.is_local:
-        logger.debug("prefetch disabled in LOCAL mode")
-        return
+    # LOCAL mode runs prefetch too — skip_scoring=True keeps it LLM-free
 
     effective_queries = queries or _DEFAULT_QUERIES
     logger.info(
