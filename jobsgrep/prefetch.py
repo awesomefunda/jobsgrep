@@ -30,6 +30,9 @@ _DEFAULT_QUERIES = [
     "Machine Learning Engineer",
     "Data Engineer",
     "Engineering Manager",
+    "Product Manager",
+    "Senior Product Manager",
+    "Technical Program Manager",
 ]
 
 

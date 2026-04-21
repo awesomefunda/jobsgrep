@@ -161,10 +161,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("seed load failed: %s", e)
 
-    # Start background prefetch in non-Vercel server modes
+    # Start background prefetch (all modes except Vercel serverless).
+    # skip_scoring=True: raw job fetch only, no LLM calls required.
     import os as _os
     prefetch_task = None
-    if not settings.is_local and settings.prefetch_on_startup and not _os.environ.get("VERCEL"):
+    if settings.prefetch_on_startup and not _os.environ.get("VERCEL"):
         from .prefetch import start_prefetch_loop
         queries = (
             [q.strip() for q in settings.prefetch_queries.split(",") if q.strip()]
@@ -172,9 +173,10 @@ async def lifespan(app: FastAPI):
         )
         prefetch_task = asyncio.create_task(
             start_prefetch_loop(queries=queries,
-                                interval_hours=settings.prefetch_interval_hours)
+                                interval_hours=settings.prefetch_interval_hours,
+                                skip_scoring=True)
         )
-        logger.info("prefetch worker started")
+        logger.info("prefetch worker started (skip_scoring=True)")
 
     yield
 
