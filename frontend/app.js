@@ -20,6 +20,7 @@
   const downloadBtn    = $('download-btn');
   const hotSkillsPanel = $('hot-skills-panel');
   const hotSkillsList  = $('hot-skills-list');
+  const aiTip          = $('ai-tip');
   const toast          = $('toast');
 
   const historyPanel    = $('history-panel');
@@ -249,6 +250,9 @@
       downloadBtn.href = data.download_url;
       downloadBtn.style.display = 'inline-flex';
     }
+
+    // AI tip — show when there are results to download
+    if (aiTip) aiTip.style.display = data.total_jobs > 0 ? 'block' : 'none';
 
     // Hot skills
     if (data.hot_skills && data.hot_skills.length) {
