@@ -535,6 +535,77 @@ async def favicon():
                     headers={"Cache-Control": "public, max-age=86400"})
 
 
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    from fastapi.responses import PlainTextResponse
+    settings = get_settings()
+    content = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /api/\n"
+        f"Sitemap: {settings.site_url}/sitemap.xml\n"
+    )
+    return PlainTextResponse(content, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    from fastapi.responses import Response
+    from datetime import date
+    settings = get_settings()
+    base = settings.site_url
+    today = date.today().isoformat()
+
+    # Static keyword pages that make good landing pages for Google
+    keywords = [
+        ("software-engineer", "Software Engineer"),
+        ("senior-software-engineer", "Senior Software Engineer"),
+        ("staff-software-engineer", "Staff Software Engineer"),
+        ("backend-engineer", "Backend Engineer"),
+        ("frontend-engineer", "Frontend Engineer"),
+        ("full-stack-engineer", "Full Stack Engineer"),
+        ("machine-learning-engineer", "Machine Learning Engineer"),
+        ("data-engineer", "Data Engineer"),
+        ("engineering-manager", "Engineering Manager"),
+        ("software-development-manager", "Software Development Manager"),
+        ("director-of-engineering", "Director of Engineering"),
+        ("vp-of-engineering", "VP of Engineering"),
+        ("product-manager", "Product Manager"),
+        ("senior-product-manager", "Senior Product Manager"),
+        ("technical-program-manager", "Technical Program Manager"),
+    ]
+
+    urls = [
+        f"""  <url>
+    <loc>{base}/</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>"""
+    ]
+    for slug, _ in keywords:
+        urls.append(
+            f"""  <url>
+    <loc>{base}/?q={slug}</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>"""
+        )
+
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "\n".join(urls)
+        + "\n</urlset>\n"
+    )
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 @app.get("/api/sources")
 async def list_sources(user: AuthDep):
     """List enabled data sources for current mode with legal classification."""

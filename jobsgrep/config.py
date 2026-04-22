@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     prefetch_interval_hours: float = 6.0
     prefetch_on_startup: bool = True
 
+    # Public site URL (used for sitemap / canonical links). No trailing slash.
+    site_url: str = "https://jobsgrep.com"
+
     # Push import auth (same token as jobsgrep_access_token, explicit for clarity)
     push_token: str = ""
 
