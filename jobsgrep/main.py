@@ -367,6 +367,270 @@ async def _run_search(task_id: str, query: str, resume_text: str | None, skip_sc
         task.progress_message = f"Search failed: {e}"
 
 
+# ─── SEO keyword pages ───────────────────────────────────────────────────────
+
+_KEYWORD_PAGES: dict[str, str] = {
+    "software-engineer": "Software Engineer",
+    "senior-software-engineer": "Senior Software Engineer",
+    "staff-software-engineer": "Staff Software Engineer",
+    "backend-engineer": "Backend Engineer",
+    "frontend-engineer": "Frontend Engineer",
+    "full-stack-engineer": "Full Stack Engineer",
+    "machine-learning-engineer": "Machine Learning Engineer",
+    "data-engineer": "Data Engineer",
+    "engineering-manager": "Engineering Manager",
+    "software-development-manager": "Software Development Manager",
+    "director-of-engineering": "Director of Engineering",
+    "vp-of-engineering": "VP of Engineering",
+    "product-manager": "Product Manager",
+    "senior-product-manager": "Senior Product Manager",
+    "technical-program-manager": "Technical Program Manager",
+}
+
+
+def _build_job_landing_page(slug: str, role: str, base_url: str) -> str:
+    """Render a server-side HTML landing page for a job role keyword."""
+    import html as _html
+    from .job_cache import search_index
+
+    jobs = search_index(role)[:60]
+
+    # Build job list items
+    items_html = ""
+    for job in jobs:
+        title = _html.escape(job.title)
+        company = _html.escape(job.company)
+        loc = _html.escape(job.location or "Remote")
+        url = _html.escape(job.url or "#")
+        remote_badge = (
+            '<span class="remote-badge">Remote</span>' if job.remote else ""
+        )
+        items_html += f"""
+        <li class="job-item">
+          <a href="{url}" target="_blank" rel="noopener noreferrer">
+            <span class="job-title">{title}</span>
+            <span class="job-meta">{company} &mdash; {loc} {remote_badge}</span>
+          </a>
+        </li>"""
+
+    if not items_html:
+        items_html = (
+            '<li class="no-jobs">No cached listings right now. '
+            '<a href="/">Search live →</a></li>'
+        )
+
+    count = len(jobs)
+    count_label = f"{count} active " if count else ""
+    desc = (
+        f"Browse {count_label}{role} openings aggregated from Greenhouse, Lever, "
+        f"Ashby, YC companies, HN Hiring, and more. Updated daily. "
+        f"Download a free Excel tracker."
+    )
+
+    # JSON-LD: ItemList of job postings
+    import json as _json
+    ld_items = []
+    for i, job in enumerate(jobs[:20], 1):
+        ld_items.append({
+            "@type": "ListItem",
+            "position": i,
+            "name": _html.escape(job.title),
+            "url": job.url or base_url,
+        })
+    ld = {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": f"{role} Jobs",
+        "description": desc,
+        "url": f"{base_url}/jobs/{slug}",
+        "numberOfItems": count,
+        "itemListElement": ld_items,
+    }
+    ld_json = _json.dumps(ld, ensure_ascii=False)
+
+    other_roles = [
+        (s, r) for s, r in _KEYWORD_PAGES.items() if s != slug
+    ][:8]
+    related_links = " &bull; ".join(
+        f'<a href="/jobs/{s}">{r}</a>' for s, r in other_roles
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{role} Jobs — JobsGrep</title>
+  <meta name="description" content="{desc}">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="{base_url}/jobs/{slug}">
+
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{base_url}/jobs/{slug}">
+  <meta property="og:title" content="{role} Jobs — JobsGrep">
+  <meta property="og:description" content="{desc}">
+  <meta property="og:image" content="{base_url}/favicon.png">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{role} Jobs — JobsGrep">
+  <meta name="twitter:description" content="{desc}">
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+
+  <script type="application/ld+json">{ld_json}</script>
+
+  <style>
+    .landing-hero {{
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+    }}
+    .landing-hero h1 {{
+      font-size: 1.7rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }}
+    .landing-hero .subtitle {{
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.6;
+      margin-bottom: 1.25rem;
+    }}
+    .search-cta {{
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding: 0.55rem 1.25rem;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.15s;
+    }}
+    .search-cta:hover {{ background: var(--accent-hover); }}
+    .jobs-section {{
+      width: 100%;
+    }}
+    .jobs-section h2 {{
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }}
+    .jobs-section .count-badge {{
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-weight: 400;
+      margin-left: 0.5rem;
+    }}
+    .job-list {{
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }}
+    .job-item a {{
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      padding: 0.85rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      text-decoration: none;
+      transition: border-color 0.15s;
+    }}
+    .job-item a:hover {{ border-color: var(--accent); }}
+    .job-title {{
+      font-weight: 500;
+      font-size: 0.93rem;
+      color: var(--text);
+    }}
+    .job-meta {{
+      font-size: 0.8rem;
+      color: var(--muted);
+    }}
+    .remote-badge {{
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: rgba(91,141,238,0.15);
+      color: var(--accent);
+      margin-left: 4px;
+      vertical-align: middle;
+    }}
+    .no-jobs {{
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 1rem;
+    }}
+    .no-jobs a {{ color: var(--accent); }}
+    .related-section {{
+      width: 100%;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 2;
+    }}
+    .related-section a {{ color: var(--accent); text-decoration: none; }}
+    .related-section a:hover {{ text-decoration: underline; }}
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="/" style="text-decoration:none;">
+    <span class="logo">⚡ JobsGrep</span>
+  </a>
+</header>
+
+<main>
+
+  <div class="landing-hero">
+    <h1>{role} Jobs</h1>
+    <p class="subtitle">
+      {count_label.strip() or "Active"} {role} openings aggregated live from Greenhouse, Lever,
+      Ashby, YC companies, Hacker News Hiring, and more. Search and download a clean
+      Excel tracker with every lead — instantly.
+    </p>
+    <a class="search-cta" href="/?q={slug}">Search {role} Jobs →</a>
+  </div>
+
+  <div class="jobs-section">
+    <h2>
+      Current Openings
+      <span class="count-badge">{count} listed</span>
+    </h2>
+    <ul class="job-list">
+      {items_html}
+    </ul>
+  </div>
+
+  <div class="related-section">
+    <strong style="color:var(--text);">Browse other roles:</strong><br>
+    {related_links}
+  </div>
+
+</main>
+
+<footer>
+  Data sourced from public APIs: Greenhouse, Lever, Ashby, Recruitee, Workable, HN Hiring, YC, USAJobs.
+  &nbsp;|&nbsp;<a href="/">Search</a>
+  &nbsp;|&nbsp;<a href="/docs">API Docs</a>
+  &nbsp;|&nbsp;<a href="/api/health">Health</a>
+</footer>
+
+</body>
+</html>"""
+
+
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 @app.get("/")
@@ -375,6 +639,21 @@ async def index():
     if index_html.exists():
         return FileResponse(str(index_html), headers={"Cache-Control": "no-store"})
     return JSONResponse({"status": "JobsGrep running", "docs": "/docs"})
+
+
+@app.get("/jobs/{slug}", include_in_schema=False)
+async def job_landing(slug: str):
+    """Server-rendered SEO landing page for a job role keyword."""
+    from fastapi.responses import HTMLResponse
+    role = _KEYWORD_PAGES.get(slug)
+    if not role:
+        raise HTTPException(status_code=404, detail="Page not found")
+    settings = get_settings()
+    html = _build_job_landing_page(slug, role, settings.site_url)
+    return HTMLResponse(
+        content=html,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.post("/api/search", response_model=SearchResponse)
@@ -556,25 +835,6 @@ async def sitemap_xml():
     base = settings.site_url
     today = date.today().isoformat()
 
-    # Static keyword pages that make good landing pages for Google
-    keywords = [
-        ("software-engineer", "Software Engineer"),
-        ("senior-software-engineer", "Senior Software Engineer"),
-        ("staff-software-engineer", "Staff Software Engineer"),
-        ("backend-engineer", "Backend Engineer"),
-        ("frontend-engineer", "Frontend Engineer"),
-        ("full-stack-engineer", "Full Stack Engineer"),
-        ("machine-learning-engineer", "Machine Learning Engineer"),
-        ("data-engineer", "Data Engineer"),
-        ("engineering-manager", "Engineering Manager"),
-        ("software-development-manager", "Software Development Manager"),
-        ("director-of-engineering", "Director of Engineering"),
-        ("vp-of-engineering", "VP of Engineering"),
-        ("product-manager", "Product Manager"),
-        ("senior-product-manager", "Senior Product Manager"),
-        ("technical-program-manager", "Technical Program Manager"),
-    ]
-
     urls = [
         f"""  <url>
     <loc>{base}/</loc>
@@ -583,10 +843,10 @@ async def sitemap_xml():
     <priority>1.0</priority>
   </url>"""
     ]
-    for slug, _ in keywords:
+    for slug in _KEYWORD_PAGES:
         urls.append(
             f"""  <url>
-    <loc>{base}/?q={slug}</loc>
+    <loc>{base}/jobs/{slug}</loc>
     <lastmod>{today}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
