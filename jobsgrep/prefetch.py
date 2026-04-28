@@ -21,7 +21,6 @@ logger = logging.getLogger("jobsgrep.prefetch")
 # scored immediately; the rest are staggered to spread API load.
 _DEFAULT_QUERIES = [
     "Software Engineer",
-    "Software Development Manager",
     "Senior Software Engineer",
     "Staff Software Engineer",
     "Backend Engineer",
@@ -30,6 +29,9 @@ _DEFAULT_QUERIES = [
     "Machine Learning Engineer",
     "Data Engineer",
     "Engineering Manager",
+    "Software Development Manager",
+    "Director of Engineering",
+    "VP of Engineering",
     "Product Manager",
     "Senior Product Manager",
     "Technical Program Manager",
