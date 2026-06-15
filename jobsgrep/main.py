@@ -314,6 +314,7 @@ async def _run_search(task_id: str, query: str, resume_text: str | None, skip_sc
         # cities ("San Francisco, CA"), never countries, so "United States" / "USA"
         # as a location would eliminate every result.
         _BROAD_GEOS = frozenset({"united states", "usa", "us", "america", "united states of america"})
+        had_broad_us = any(l.lower() in _BROAD_GEOS for l in parsed.locations)
         effective_locations = [l for l in parsed.locations if l.lower() not in _BROAD_GEOS]
 
         # Apply semantic title/location filtering so keyword overlap doesn't
@@ -324,6 +325,23 @@ async def _run_search(task_id: str, query: str, resume_text: str | None, skip_sc
             import copy as _copy
             _parsed_copy = parsed.model_copy(update={"locations": effective_locations})
             filtered = filter_jobs(filtered, _parsed_copy)
+
+        # When user asked for US jobs but broad geo was stripped, exclude jobs
+        # clearly located outside the US (India, Europe, etc.)
+        if had_broad_us and not effective_locations and filtered:
+            _INTL_MARKERS = {
+                "india", "bangalore", "bengaluru", "hyderabad", "pune", "mumbai",
+                "delhi", "chennai", "kolkata", "noida", "gurgaon",
+                "paris", "france", "london", "united kingdom", "germany", "berlin",
+                "munich", "amsterdam", "netherlands", "toronto", "canada",
+                "australia", "sydney", "melbourne", "singapore", "dubai", "uae",
+                "mexico", "brazil", "argentina", "poland", "warsaw", "prague",
+                "budapest", "bucharest", "kyiv", "ukraine",
+            }
+            filtered = [
+                j for j in filtered
+                if not any(m in (j.location or "").lower() for m in _INTL_MARKERS)
+            ]
 
         if filtered:
             logger.info("index hit for task %s: %d jobs found from %d total", 
