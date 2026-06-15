@@ -6,6 +6,7 @@
     { "src": "/(.*)", "dest": "/api/index.py" }
   ],
   "env": {
-    "JOBSGREP_MODE": "PUBLIC"
+    "JOBSGREP_MODE": "PUBLIC",
+    "SITE_URL": "https://jobsgrep.com"
   }
 }
