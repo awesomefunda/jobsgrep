@@ -314,7 +314,13 @@ async def _run_search(task_id: str, query: str, resume_text: str | None, skip_sc
         # cities ("San Francisco, CA"), never countries, so "United States" / "USA"
         # as a location would eliminate every result.
         _BROAD_GEOS = frozenset({"united states", "usa", "us", "america", "united states of america"})
-        had_broad_us = any(l.lower() in _BROAD_GEOS for l in parsed.locations)
+        # Check raw query too — fallback parser often doesn't extract country-level geos
+        _query_words = set(query.lower().split())
+        had_broad_us = (
+            bool(_query_words & _BROAD_GEOS)
+            or "united states" in query.lower()
+            or "united states of america" in query.lower()
+        )
         effective_locations = [l for l in parsed.locations if l.lower() not in _BROAD_GEOS]
 
         # Apply semantic title/location filtering so keyword overlap doesn't
