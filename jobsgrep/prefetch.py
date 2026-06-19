@@ -33,7 +33,7 @@ CORPUS_LABEL = "All tech jobs (corpus)"
 # Indeed, LinkedIn & Glassdoor coverage before the corpus is pushed to prod.
 CORPUS_SOURCE_NAMES = [
     "greenhouse", "lever", "ashby", "recruitee", "workable",
-    "smartrecruiters", "adzuna", "hn_hiring", "yc_companies", "jobspy",
+    "smartrecruiters", "adzuna", "jsearch", "hn_hiring", "yc_companies", "jobspy",
 ]
 
 
@@ -56,6 +56,7 @@ async def fetch_corpus() -> int:
     from .sources.yc_companies import YCCompaniesSource
     from .sources.smartrecruiters import SmartRecruitersSource
     from .sources.adzuna import AdzunaSource
+    from .sources.jsearch import JSearchSource
     from .sources.jobspy_source import JobSpySource
 
     match_all = ParsedQuery()  # all fields default to empty / False
@@ -69,6 +70,7 @@ async def fetch_corpus() -> int:
         "workable": WorkableSource(),
         "smartrecruiters": SmartRecruitersSource(),
         "adzuna": AdzunaSource(),
+        "jsearch": JSearchSource(),
         "hn_hiring": HNHiringSource(),
         "yc_companies": YCCompaniesSource(),
         "jobspy": JobSpySource(),

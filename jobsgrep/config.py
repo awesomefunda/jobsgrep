@@ -36,6 +36,12 @@ class Settings(BaseSettings):
     adzuna_country: str = "us"
     adzuna_max_pages: int = 5
 
+    # JSearch (RapidAPI / OpenWeb Ninja) — Google for Jobs as a structured API.
+    # Free tier: 200 req/mo, no card. Works in all modes (key, not scraping).
+    jsearch_api_key: str = ""
+    jsearch_country: str = "us"
+    jsearch_num_pages: int = 1
+
     # JobSpy scraper (LOCAL/PRIVATE only) — Indeed + Google Jobs by default.
     # Google Jobs itself aggregates LinkedIn/Glassdoor/ZipRecruiter/company pages.
     jobspy_sites: str = "indeed,google"        # comma-separated: indeed,google,linkedin,glassdoor,zip_recruiter
@@ -75,7 +81,7 @@ class Settings(BaseSettings):
         Path("/tmp/jobsgrep") if os.environ.get("VERCEL") else Path.home() / ".jobsgrep"
     )
 
-    @field_validator("groq_api_key", "gemini_api_key", "jobsgrep_access_token", "usajobs_api_key", "push_token", "adzuna_app_id", "adzuna_app_key", mode="before")
+    @field_validator("groq_api_key", "gemini_api_key", "jobsgrep_access_token", "usajobs_api_key", "push_token", "adzuna_app_id", "adzuna_app_key", "jsearch_api_key", mode="before")
     @classmethod
     def strip_api_keys(cls, v):
         """Strip whitespace from API keys and tokens to prevent 401 errors."""
@@ -208,6 +214,14 @@ SOURCE_REGISTRY: dict[str, DataSourceMeta] = {
         rate_limit=RateLimit(calls_per_minute=25, calls_per_hour=250),
         tos_url="https://developer.adzuna.com/terms",
         description="Adzuna licensed aggregator API (free dev key required)",
+    ),
+    "jsearch": DataSourceMeta(
+        name="jsearch",
+        source_type=DataSourceType.OFFICIAL_API,
+        enabled_modes=_ALL_MODES,
+        rate_limit=RateLimit(calls_per_minute=10, calls_per_hour=200),
+        tos_url="https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch",
+        description="JSearch — Google for Jobs via API (free RapidAPI key required)",
     ),
     "jobspy": DataSourceMeta(
         name="jobspy",
