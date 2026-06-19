@@ -92,37 +92,54 @@ def _load_seed_cache() -> None:
     if not seed_dir.exists():
         return
 
+    import gzip
+    import json
     from .job_cache import _cache_dir, _scored_dir
     scored = _scored_dir()
     raw    = _cache_dir()
 
+    def _load(src: Path) -> dict:
+        if src.suffix == ".gz":
+            with gzip.open(src, "rt", encoding="utf-8") as f:
+                return json.loads(f.read())
+        return json.loads(src.read_text(encoding="utf-8"))
+
+    def _dst_name(src: Path, prefix: str) -> str:
+        name = src.name[:-3] if src.name.endswith(".gz") else src.name
+        return name.replace(prefix, "", 1)
+
     seeded = 0
     now = time.time()
-    for src in seed_dir.glob("scored__*.json"):
-        dst = scored / src.name.replace("scored__", "")
-        if not dst.exists():
+    # Seeds may be plain .json or gzipped .json.gz (gzip keeps the repo small).
+    for pattern in ("scored__*.json", "scored__*.json.gz"):
+        for src in seed_dir.glob(pattern):
+            dst = scored / _dst_name(src, "scored__")
+            if dst.exists():
+                continue
             # Re-stamp stored_at and force source=seed so entries never expire via TTL
             try:
-                data = json.loads(src.read_text(encoding="utf-8"))
+                data = _load(src)
                 data["stored_at"] = now
                 data["source"] = "seed"
                 dst.write_text(json.dumps(data), encoding="utf-8")
-            except Exception:
-                shutil.copy(src, dst)
-            seeded += 1
+                seeded += 1
+            except Exception as e:
+                logger.warning("seed load failed for %s: %s", src.name, e)
 
-    for src in seed_dir.glob("raw__*.json"):
-        dst = raw / src.name.replace("raw__", "")
-        if not dst.exists():
+    for pattern in ("raw__*.json", "raw__*.json.gz"):
+        for src in seed_dir.glob(pattern):
+            dst = raw / _dst_name(src, "raw__")
+            if dst.exists():
+                continue
             try:
-                data = json.loads(src.read_text(encoding="utf-8"))
+                data = _load(src)
                 # Preserve the real scrape time so the "Last scraped" badge is
                 # accurate; only stamp if the seed lacks a timestamp.
                 data.setdefault("stored_at", now)
                 dst.write_text(json.dumps(data), encoding="utf-8")
-            except Exception:
-                shutil.copy(src, dst)
-            seeded += 1
+                seeded += 1
+            except Exception as e:
+                logger.warning("seed load failed for %s: %s", src.name, e)
 
     if seeded:
         logger.info("seeded %d cache file(s) from data/seed/", seeded)

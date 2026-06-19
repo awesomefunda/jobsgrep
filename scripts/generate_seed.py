@@ -53,21 +53,23 @@ async def main() -> None:
 
     SEED_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Remove legacy per-query scored seeds (old architecture) unless asked to keep.
-    if not args.keep_scored:
-        removed = 0
-        for old in SEED_DIR.glob("scored__*.json"):
+    # Remove legacy/previous seeds (plain + gzipped) unless asked to keep scored.
+    removed = 0
+    for pat in (["raw__*.json", "raw__*.json.gz"] +
+                ([] if args.keep_scored else ["scored__*.json", "scored__*.json.gz"])):
+        for old in SEED_DIR.glob(pat):
             old.unlink(); removed += 1
-        for old in SEED_DIR.glob("raw__*.json"):
-            old.unlink(); removed += 1
-        if removed:
-            print(f"Removed {removed} stale seed file(s).")
+    if removed:
+        print(f"Removed {removed} previous seed file(s).")
 
-    dst = SEED_DIR / "raw__corpus.json"
-    shutil.copy(corpus_file, dst)
-    data = json.loads(dst.read_text(encoding="utf-8"))
+    # Write gzipped to keep the committed seed (and git history) small.
+    import gzip
+    data = json.loads(corpus_file.read_text(encoding="utf-8"))
+    dst = SEED_DIR / "raw__corpus.json.gz"
+    with gzip.open(dst, "wt", encoding="utf-8") as f:
+        json.dump(data, f)
     size_mb = dst.stat().st_size / (1024 * 1024)
-    print(f"\nWrote {dst.relative_to(ROOT)} — {data.get('job_count', '?')} jobs ({size_mb:.1f} MB)")
+    print(f"\nWrote {dst.relative_to(ROOT)} — {data.get('job_count', '?')} jobs ({size_mb:.1f} MB gzipped)")
     print("\nNext steps:")
     print("  git add jobsgrep/seed_data")
     print("  git commit -m 'seed: refresh live corpus'")

@@ -40,7 +40,9 @@ class Settings(BaseSettings):
     # Free tier: 200 req/mo, no card. Works in all modes (key, not scraping).
     jsearch_api_key: str = ""
     jsearch_country: str = "us"
-    jsearch_num_pages: int = 1
+    # num_pages>1 returns ~10 more results/page but bills 1 request/page.
+    # 10 corpus terms x 3 pages = ~30 requests/run (~6 runs within the 200/mo free tier).
+    jsearch_num_pages: int = 3
 
     # Apify actor for LinkedIn jobs (paid service; runs in any mode via API).
     # $5/mo free credit. Pick a LinkedIn jobs actor and set its slug + token.
