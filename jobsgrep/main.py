@@ -116,7 +116,9 @@ def _load_seed_cache() -> None:
         if not dst.exists():
             try:
                 data = json.loads(src.read_text(encoding="utf-8"))
-                data["stored_at"] = now
+                # Preserve the real scrape time so the "Last scraped" badge is
+                # accurate; only stamp if the seed lacks a timestamp.
+                data.setdefault("stored_at", now)
                 dst.write_text(json.dumps(data), encoding="utf-8")
             except Exception:
                 shutil.copy(src, dst)
