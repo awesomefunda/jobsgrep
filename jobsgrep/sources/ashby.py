@@ -1,4 +1,10 @@
-"""Ashby ATS public GraphQL job board API."""
+"""Ashby ATS public posting API.
+
+Uses the documented REST posting API:
+  GET https://api.ashbyhq.com/posting-api/job-board/{board}?includeCompensation=true
+
+(The older non-user-graphql endpoint stopped returning boards.)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -10,62 +16,29 @@ from .base import BaseSource, job_id
 
 logger = logging.getLogger("jobsgrep.sources.ashby")
 
+# Verified-working Ashby job boards (handle = jobs.ashbyhq.com/<handle>).
 DEFAULT_BOARDS = [
-    "linear", "vercel", "openai", "anthropic", "mistral", "cohere",
-    "dbt-labs", "supabase", "neon", "planetscale", "turso",
-    "anyscale", "modal", "replicate", "together", "coreweave",
-    "weights-biases", "predibase", "mosaic",
-    "retool", "airplane", "internal",
-    "loom", "notion", "coda",
-    "mercury", "brex", "puzzle",
-    "replit", "cursor", "sourcegraph",
-    "temporal", "inngest", "trigger",
-    "render", "railway",
-    "deepmind", "inflection", "adept", "stability",
-    "scale", "labelbox", "snorkel",
-    "benchling", "recursion",
-    "figma", "miro", "whimsical",
-    # High-paying AI companies (confirmed Ashby)
-    "perplexity", "elevenlabs", "runway",
+    "openai", "elevenlabs", "notion", "cohere", "ramp", "vanta", "replit",
+    "perplexity", "baseten", "supabase", "watershed", "modal", "linear",
+    "astronomer", "posthog", "runway", "hex", "mercury", "deel", "clay",
+    "sourcegraph", "retool", "wandb", "census", "mux", "together",
 ]
-
-_GQL_QUERY = """
-query ApiJobBoardWithTeams($boardHandle: String!) {
-  jobBoard: jobBoardWithTeams(handle: $boardHandle) {
-    jobPostings {
-      id
-      title
-      locationName
-      employmentType
-      isListed
-      externalLink
-      compensation {
-        summaryComponents {
-          label
-          summary
-        }
-      }
-    }
-  }
-}
-"""
 
 _SALARY_RE = re.compile(r"\$[\d,]+(?:K|k)?(?:\s*[-–]\s*\$[\d,]+(?:K|k)?)?")
 
 
-def _parse_salary(comp: dict) -> str:
-    for c in comp.get("summaryComponents", []):
-        summary = c.get("summary", "")
-        m = _SALARY_RE.search(summary)
-        if m:
-            return m.group(0)
-    return ""
+def _parse_salary(comp) -> str:
+    if not comp:
+        return ""
+    text = comp if isinstance(comp, str) else str(comp)
+    m = _SALARY_RE.search(text)
+    return m.group(0) if m else ""
 
 
 class AshbySource(BaseSource):
     source_name = "ashby"
 
-    GQL_URL = "https://jobs.ashbyhq.com/api/non-user-graphql"
+    BASE_URL = "https://api.ashbyhq.com/posting-api/job-board/{board}"
 
     async def fetch_jobs(self, query: ParsedQuery) -> list[RawJob]:
         self._check_allowed()
@@ -89,14 +62,9 @@ class AshbySource(BaseSource):
         return results
 
     async def _fetch_board(self, board: str, query: ParsedQuery) -> list[RawJob]:
+        url = self.BASE_URL.format(board=board)
         try:
-            resp = await self._post(
-                self.GQL_URL,
-                json={"operationName": "ApiJobBoardWithTeams",
-                      "query": _GQL_QUERY,
-                      "variables": {"boardHandle": board}},
-                headers={"Content-Type": "application/json"},
-            )
+            resp = await self._get(url, params={"includeCompensation": "true"})
             if resp.status_code in (404, 400):
                 return []
             resp.raise_for_status()
@@ -105,28 +73,29 @@ class AshbySource(BaseSource):
             logger.debug("ashby board %s failed: %s", board, e)
             return []
 
-        board_data = data.get("data", {}).get("jobBoard")
-        if not board_data:
-            return []
-
+        company = board.replace("-", " ").title()
         jobs = []
-        for j in board_data.get("jobPostings", []):
-            if not j.get("isListed"):
+        for j in data.get("jobs", []):
+            if j.get("isListed") is False:
                 continue
             title = j.get("title", "")
-            location = j.get("locationName", "")
-            url_apply = j.get("externalLink", "") or f"https://jobs.ashbyhq.com/{board}/{j.get('id', '')}"
-            comp = j.get("compensation") or {}
-            salary_text = _parse_salary(comp)
+            location = j.get("location", "") or ""
+            url_apply = j.get("jobUrl") or j.get("applyUrl") or ""
+            is_remote = bool(j.get("isRemote")) or (j.get("workplaceType") == "Remote") \
+                or "remote" in location.lower()
+            published = j.get("publishedAt", "") or ""
+            salary_text = _parse_salary(j.get("compensation"))
 
             rj = RawJob(
                 id=job_id(board, title, location),
                 title=title,
-                company=board.replace("-", " ").title(),
+                company=company,
                 location=location,
-                remote="remote" in location.lower(),
+                remote=is_remote,
                 url=url_apply,
+                description=(j.get("descriptionPlain", "") or "")[:2000],
                 salary_text=salary_text,
+                date_posted=published[:10] if published else "",
                 source="ashby",
                 source_type=DataSourceType.PUBLIC_API,
             )

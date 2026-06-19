@@ -9,9 +9,9 @@ from .base import BaseSource, job_id
 
 logger = logging.getLogger("jobsgrep.sources.recruitee")
 
+# Verified-working Recruitee boards (slug = <slug>.recruitee.com).
 DEFAULT_BOARDS = [
-    "intercom", "gitlab", "miro", "zendesk", "pipedrive",
-    "typeform", "contentful", "sentry", "posthog",
+    "bunq", "channable", "sendcloud", "personio",
 ]
 
 
