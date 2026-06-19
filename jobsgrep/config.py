@@ -51,7 +51,7 @@ class Settings(BaseSettings):
 
     # JobSpy scraper (LOCAL/PRIVATE only) — Indeed + Google Jobs by default.
     # Google Jobs itself aggregates LinkedIn/Glassdoor/ZipRecruiter/company pages.
-    jobspy_sites: str = "indeed,google"        # comma-separated: indeed,google,linkedin,glassdoor,zip_recruiter
+    jobspy_sites: str = "indeed,google,linkedin"  # comma-separated: indeed,google,linkedin,glassdoor,zip_recruiter
     jobspy_results_per_term: int = 100
     jobspy_location: str = "United States"
     jobspy_hours_old: int = 336                # 14 days
