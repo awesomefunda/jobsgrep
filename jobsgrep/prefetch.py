@@ -90,6 +90,12 @@ async def fetch_corpus() -> int:
         logger.warning("corpus: no jobs fetched from any source")
         return 0
 
+    # Keep only tech roles — boards include sales/marketing/ops in volume.
+    from .taxonomy import filter_tech
+    before = len(all_jobs)
+    all_jobs = filter_tech(all_jobs)
+    logger.info("corpus: kept %d tech jobs of %d fetched", len(all_jobs), before)
+
     cache_store(CORPUS_KEY, all_jobs, source="prefetch", label=CORPUS_LABEL)
     logger.info("corpus: cached %d unique jobs", len(all_jobs))
     return len(all_jobs)

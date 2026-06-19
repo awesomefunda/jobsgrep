@@ -50,6 +50,7 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
         "security engineer", "security analyst", "infosec", "appsec",
         "application security", "cybersecurity", "soc analyst",
         "penetration tester", "pentester", "security architect",
+        "security operations", "security researcher",
     ]),
     ("Design", [
         "ux designer", "ui designer", "product designer", "ux/ui",
@@ -59,6 +60,25 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
     ("QA & Test", [
         "qa engineer", "quality assurance", "test engineer", "sdet",
         "automation engineer", "quality engineer",
+    ]),
+    ("Solutions & Sales Engineering", [
+        "solutions engineer", "solutions architect", "sales engineer",
+        "solutions consultant", "presales", "pre-sales", "field engineer",
+        "customer engineer", "forward deployed", "implementation engineer",
+        "solution architect",
+    ]),
+    ("Developer Relations", [
+        "developer advocate", "developer relations", "devrel",
+        "developer experience", "technical evangelist", "developer evangelist",
+    ]),
+    ("IT & Support", [
+        "support engineer", "technical support", "it support", "help desk",
+        "helpdesk", "system administrator", "systems administrator", "sysadmin",
+        "desktop support", "it administrator", "database administrator",
+    ]),
+    ("Technical Writing", [
+        "technical writer", "documentation engineer", "docs engineer",
+        "content engineer",
     ]),
     ("Software Engineering", [
         "software engineer", "software developer", "software engineering", "swe",
@@ -96,8 +116,35 @@ LEVEL_ORDER: list[str] = [
 # Sort/display order for role families.
 ROLE_ORDER: list[str] = [
     "Software Engineering", "Data & ML", "Infrastructure & DevOps", "Security",
-    "QA & Test", "Design", "Engineering Management", "Product Management",
-    "Program & Project Management", ROLE_OTHER,
+    "QA & Test", "Solutions & Sales Engineering", "Developer Relations",
+    "IT & Support", "Technical Writing", "Design", "Engineering Management",
+    "Product Management", "Program & Project Management", ROLE_OTHER,
+]
+
+# Clearly non-technical roles to drop from a tech-jobs corpus when a title
+# falls into the "Other" bucket (these companies hire sales/marketing/ops in
+# volume, which otherwise dominate the data).
+_NON_TECH_KEYWORDS = [
+    "account executive", "account manager", "sales representative", "sales rep",
+    "sales development", "business development", "bdr", "sdr", "sales manager",
+    "sales executive", "sales specialist", "sales enablement", "sales director",
+    "enterprise sales", "client sales", "revenue operations", "revops",
+    "go-to-market", "account development", "business value",
+    "recruiter", "recruiting", "talent acquisition", "sourcer",
+    "marketing", "brand", "social media", "copywriter", "content strategist",
+    "seo specialist", "growth marketer", "demand generation",
+    "human resources", "people operations", "people partner", "hr ",
+    "office manager", "executive assistant", "administrative assistant",
+    "receptionist", "paralegal", "attorney", "legal counsel", "general counsel",
+    "accountant", "accounting", "bookkeeper", "controller", "financial analyst",
+    "finance manager", "finance associate", "payroll", "auditor", "procurement",
+    "tax ", "counsel", "case manager", "chief of staff", "customs",
+    "customer success", "customer support representative", "account director",
+    "partnerships", "partner manager", "community manager", "event",
+    "engagement manager", "engagement specialist", "operations manager",
+    "operations specialist", "operations analyst", "area manager",
+    "warehouse", "driver", "nurse", "teacher", "barista", "cashier",
+    "store manager", "retail", "operations associate", "office coordinator",
 ]
 
 
@@ -112,6 +159,9 @@ def _compile(groups: list[tuple[str, list[str]]]) -> list[tuple[str, re.Pattern]
 
 _ROLE_PATTERNS = _compile(_ROLE_FAMILIES)
 _LEVEL_PATTERNS = _compile(_LEVELS)
+_NON_TECH_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(kw.strip()) for kw in _NON_TECH_KEYWORDS) + r")\b"
+)
 
 
 def classify_role_family(title: str) -> str:
@@ -135,3 +185,20 @@ def classify_level(title: str) -> str:
 def classify(title: str) -> tuple[str, str]:
     """Return (role_family, level) for a job title."""
     return classify_role_family(title), classify_level(title)
+
+
+def is_tech_role(title: str) -> bool:
+    """True if a title belongs in a tech-jobs corpus.
+
+    Anything classified into a known family is kept. Titles that fall into the
+    "Other" bucket are kept unless they match an explicit non-tech keyword
+    (sales, recruiting, marketing, finance, HR, etc.).
+    """
+    if classify_role_family(title) != ROLE_OTHER:
+        return True
+    return not _NON_TECH_RE.search(title.lower())
+
+
+def filter_tech(jobs):
+    """Return only the jobs whose title is a tech role (by RawJob.title)."""
+    return [j for j in jobs if is_tech_role(j.title)]

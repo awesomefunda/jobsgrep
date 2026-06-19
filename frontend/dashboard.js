@@ -125,13 +125,16 @@
       return;
     }
     let html = fams.map(f => `
-      <a class="dl-card" href="/api/packs/${esc(f.slug)}">
+      <div class="dl-card">
         <div class="dl-card-top">
           <span class="dl-name">${esc(f.label)}</span>
           <span class="dl-count">${fmt(f.count)}</span>
         </div>
-        <span class="dl-action">⬇ Download Excel</span>
-      </a>`).join('');
+        <div class="dl-links">
+          <a class="dl-dl" href="/api/packs/${esc(f.slug)}">⬇ Download Excel</a>
+          <a class="dl-view" href="/categories/${esc(f.slug)}">Details →</a>
+        </div>
+      </div>`).join('');
     html += `
       <a class="dl-card dl-card-all" href="/api/packs/all">
         <div class="dl-card-top">

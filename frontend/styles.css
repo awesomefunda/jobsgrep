@@ -516,6 +516,11 @@ footer a { color: var(--muted); }
 .dl-count { font-size: 1.4rem; font-weight: 800; color: var(--accent); }
 .dl-action { font-size: 0.82rem; color: var(--muted); font-weight: 600; }
 .dl-card:hover .dl-action { color: var(--accent); }
+.dl-links { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.dl-dl { font-size: 0.82rem; font-weight: 600; color: var(--accent); text-decoration: none; }
+.dl-dl:hover { text-decoration: underline; }
+.dl-view { font-size: 0.8rem; color: var(--muted); text-decoration: none; }
+.dl-view:hover { color: var(--text); }
 .dl-card-all { background: linear-gradient(135deg, rgba(91,141,238,0.12), rgba(91,141,238,0.04)); border-color: rgba(91,141,238,0.3); }
 .dl-card-all .dl-count { color: var(--green); }
 .dl-empty { grid-column: 1 / -1; color: var(--muted); font-size: 0.9rem; padding: 2rem; text-align: center; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); }

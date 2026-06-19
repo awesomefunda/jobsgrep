@@ -24,6 +24,10 @@ ROLE_SLUGS: dict[str, str] = {
     "Infrastructure & DevOps": "infrastructure-devops",
     "Security": "security",
     "QA & Test": "qa-test",
+    "Solutions & Sales Engineering": "solutions-sales-engineering",
+    "Developer Relations": "developer-relations",
+    "IT & Support": "it-support",
+    "Technical Writing": "technical-writing",
     "Design": "design",
     "Engineering Management": "engineering-management",
     "Product Management": "product-management",
@@ -47,7 +51,10 @@ def _city(location: str) -> str:
 
 
 def compute_stats(jobs: list[RawJob], top_n: int = 12) -> dict:
-    """Return a JSON-serializable bundle of corpus aggregates."""
+    """Return a JSON-serializable bundle of corpus aggregates (tech roles only)."""
+    from .taxonomy import filter_tech
+    jobs = filter_tech(jobs)
+
     fam_counts: Counter = Counter()
     level_counts: Counter = Counter()
     city_counts: Counter = Counter()

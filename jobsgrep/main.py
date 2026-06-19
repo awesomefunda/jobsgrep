@@ -252,12 +252,13 @@ def _filter_from_index(parsed, query: str) -> list:
     """
     from .job_cache import search_index
     from .scoring.engine import filter_jobs
+    from .taxonomy import filter_tech
 
     # Search by parsed title words, not raw query text — the raw query contains
     # location/filler words ("in usa", "near me") that don't appear in job
     # content and would over-constrain the keyword AND.
     index_query = " ".join(parsed.titles + parsed.title_variations) if parsed.titles else query
-    filtered = search_index(index_query)
+    filtered = filter_tech(search_index(index_query))
 
     query_words = set(query.lower().split())
     had_broad_us = (
@@ -667,6 +668,42 @@ async def job_landing(slug: str):
     )
 
 
+@app.get("/categories/{slug}", include_in_schema=False)
+async def category_landing(slug: str):
+    """SEO landing page for a role-family job pack."""
+    from fastapi.responses import HTMLResponse
+    from .content import render_category_page
+    from .insights import SLUG_TO_ROLE
+    from .job_cache import get_all_cached_jobs
+
+    family = SLUG_TO_ROLE.get(slug)
+    if not family:
+        raise HTTPException(status_code=404, detail="Category not found")
+    settings = get_settings()
+    html = render_category_page(family, slug, get_all_cached_jobs(), settings.site_url)
+    return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=1800"})
+
+
+@app.get("/blog", include_in_schema=False)
+async def blog_index():
+    from fastapi.responses import HTMLResponse
+    from .content import render_blog_index
+    settings = get_settings()
+    return HTMLResponse(content=render_blog_index(settings.site_url),
+                        headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.get("/blog/{slug}", include_in_schema=False)
+async def blog_post(slug: str):
+    from fastapi.responses import HTMLResponse
+    from .content import render_blog_post
+    settings = get_settings()
+    html = render_blog_post(slug, settings.site_url)
+    if html is None:
+        raise HTTPException(status_code=404, detail="Post not found")
+    return HTMLResponse(content=html, headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.post("/api/search", response_model=SearchResponse)
 async def start_search(body: SearchRequest, user: AuthDep, request: Request):
     """Start a job search. Returns task_id for polling/streaming."""
@@ -860,6 +897,19 @@ async def sitemap_xml():
     <lastmod>{today}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
+  </url>"""
+        )
+
+    from .content import all_seo_paths
+    for path in all_seo_paths():
+        priority = "0.7" if path.startswith("/categories/") else "0.6"
+        freq = "daily" if path.startswith("/categories/") else "weekly"
+        urls.append(
+            f"""  <url>
+    <loc>{base}{path}</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>{freq}</changefreq>
+    <priority>{priority}</priority>
   </url>"""
         )
 
