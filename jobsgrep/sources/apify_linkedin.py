@@ -79,43 +79,59 @@ class ApifyLinkedInSource(BaseSource):
         return all_jobs
 
     def _actor_input(self, term: str, location: str) -> dict:
-        """Best-effort input covering common LinkedIn-actor field names."""
+        """Input for harvestapi/linkedin-job-search (with generic fallbacks)."""
+        n = self.settings.apify_results_per_term
         return {
+            # harvestapi schema
+            "jobTitles": [term],
+            "locations": [location],
+            "maxItems": n,
+            "sortBy": "date",
+            # tolerated by some other actors
             "keyword": term,
-            "title": term,
-            "searchQuery": term,
             "location": location,
-            "rows": self.settings.apify_results_per_term,
-            "limit": self.settings.apify_results_per_term,
-            "maxItems": self.settings.apify_results_per_term,
+            "rows": n,
         }
+
+    @staticmethod
+    def _flatten(value, *keys) -> str:
+        """Pull a string from a value that may be a str or a nested dict."""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, dict):
+            for k in keys:
+                v = value.get(k)
+                if isinstance(v, str) and v:
+                    return v
+        return ""
 
     def _row_to_job(self, row: dict, query: ParsedQuery) -> RawJob | None:
         if not isinstance(row, dict):
             return None
 
-        def pick(*keys):
-            for k in keys:
-                v = row.get(k)
-                if v:
-                    return v
-            return ""
-
-        title = str(pick("title", "jobTitle", "position"))
+        title = str(row.get("title") or row.get("jobTitle") or "")
         if not title:
             return None
-        company = str(pick("companyName", "company", "employer")) or "Unknown"
-        location = str(pick("location", "jobLocation", "place"))
-        link = str(pick("jobUrl", "url", "link", "applyUrl"))
-        desc = str(pick("description", "descriptionText", "jobDescription"))[:2000]
-        posted = str(pick("postedAt", "postedTime", "publishedAt", "date"))[:10]
+
+        # company / location may be nested objects (harvestapi) or flat strings.
+        company = self._flatten(row.get("company"), "name", "companyName") \
+            or str(row.get("companyName") or "") or "Unknown"
+        location = self._flatten(row.get("location"), "text", "name", "city", "linkedinText") \
+            or str(row.get("jobLocation") or "")
+        link = str(row.get("linkedinUrl") or row.get("jobUrl") or row.get("url")
+                   or row.get("easyApplyUrl") or "")
+        desc = str(row.get("descriptionText") or row.get("description") or "")[:2000]
+        posted = str(row.get("postedDate") or row.get("postedAt") or row.get("date") or "")[:10]
+
+        wt = str(row.get("workplaceType") or "")
+        remote = "remote" in f"{title} {location} {wt}".lower()
 
         rj = RawJob(
             id=job_id(company, title, location),
             title=title,
             company=company,
             location=location,
-            remote="remote" in f"{title} {location}".lower(),
+            remote=remote,
             url=link,
             description=desc,
             date_posted=posted,

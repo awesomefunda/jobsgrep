@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # Apify actor for LinkedIn jobs (paid service; runs in any mode via API).
     # $5/mo free credit. Pick a LinkedIn jobs actor and set its slug + token.
     apify_token: str = ""
-    apify_actor: str = "bebity~linkedin-jobs-scraper"
+    apify_actor: str = "harvestapi~linkedin-job-search"
     apify_results_per_term: int = 50
     apify_location: str = "United States"
 
