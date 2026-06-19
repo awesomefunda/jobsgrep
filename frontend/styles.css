@@ -25,13 +25,23 @@ body {
 
 /* ─── Header ──────────────────────────────────────────────────────────── */
 header {
-  padding: 1.25rem 2rem;
+  padding: 1.1rem 2rem;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
+  position: sticky;
+  top: 0;
+  background: rgba(15,17,23,0.85);
+  backdrop-filter: blur(10px);
+  z-index: 50;
 }
 header .logo { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+.header-nav { display: flex; align-items: center; gap: 1.25rem; }
+.header-nav a { color: var(--muted); text-decoration: none; font-size: 0.85rem; font-weight: 500; transition: color 0.15s; }
+.header-nav a:hover { color: var(--text); }
+@media (max-width: 640px) { .header-nav a { display: none; } .header-nav .mode-badge { display: inline; } }
 header .mode-badge {
   font-size: 0.7rem;
   font-weight: 600;
@@ -50,8 +60,8 @@ main {
   flex-direction: column;
   align-items: center;
   padding: 3rem 1.5rem;
-  gap: 2rem;
-  max-width: 900px;
+  gap: 3rem;
+  max-width: 1080px;
   margin: 0 auto;
   width: 100%;
 }
@@ -415,6 +425,123 @@ footer a { color: var(--muted); }
   max-width: 400px;
   z-index: 999;
 }
+
+/* ─── Buttons ─────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  padding: 0.7rem 1.4rem;
+  cursor: pointer;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-ghost { background: transparent; color: var(--text); border-color: var(--border); }
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+.btn-small { padding: 0.45rem 0.9rem; font-size: 0.8rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); margin-top: 0.6rem; }
+.btn-small:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ─── Hero ────────────────────────────────────────────────────────────── */
+.hero { width: 100%; text-align: center; padding: 1rem 0 0.5rem; }
+.freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 0.35rem 0.9rem;
+  margin-bottom: 1.5rem;
+}
+.freshness .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 1.6s ease-in-out infinite; }
+.hero h1 { font-size: 2.8rem; font-weight: 800; line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 1.1rem; }
+.hero-sub { color: var(--muted); font-size: 1.02rem; line-height: 1.65; max-width: 640px; margin: 0 auto 1.75rem; }
+.hero-sub strong { color: var(--text); }
+.hero-cta { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-bottom: 2.25rem; }
+.hero-stats { display: flex; gap: 2.5rem; justify-content: center; flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; align-items: center; }
+.stat-num { font-size: 1.8rem; font-weight: 800; color: var(--text); line-height: 1; }
+.stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
+@media (max-width: 640px) { .hero h1 { font-size: 2rem; } }
+
+/* ─── Sections ────────────────────────────────────────────────────────── */
+.section { width: 100%; }
+.section-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.4rem; }
+.section-sub { color: var(--muted); font-size: 0.9rem; line-height: 1.6; margin-bottom: 1.5rem; max-width: 680px; }
+
+/* ─── How it works ────────────────────────────────────────────────────── */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.step { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; }
+.step-num { width: 32px; height: 32px; border-radius: 50%; background: rgba(91,141,238,0.12); color: var(--accent); font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 0.9rem; }
+.step h3 { font-size: 1.05rem; margin-bottom: 0.5rem; }
+.step p { color: var(--muted); font-size: 0.88rem; line-height: 1.6; }
+.how-note { color: var(--muted); font-size: 0.82rem; margin-top: 1rem; text-align: center; opacity: 0.8; }
+@media (max-width: 720px) { .steps { grid-template-columns: 1fr; } }
+
+/* ─── Charts ──────────────────────────────────────────────────────────── */
+.charts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+.chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+.chart-card.chart-wide { grid-column: 1 / -1; }
+.chart-card h3 { font-size: 0.95rem; margin-bottom: 0.9rem; font-weight: 600; }
+.chart-box { position: relative; height: 240px; }
+.chart-wide .chart-box { height: 300px; }
+@media (max-width: 720px) { .charts-grid { grid-template-columns: 1fr; } .chart-card.chart-wide { grid-column: auto; } }
+
+/* ─── Download cards ──────────────────────────────────────────────────── */
+.download-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.dl-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  text-decoration: none;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  transition: all 0.15s;
+}
+.dl-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.dl-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.dl-name { font-weight: 600; font-size: 1rem; }
+.dl-count { font-size: 1.4rem; font-weight: 800; color: var(--accent); }
+.dl-action { font-size: 0.82rem; color: var(--muted); font-weight: 600; }
+.dl-card:hover .dl-action { color: var(--accent); }
+.dl-card-all { background: linear-gradient(135deg, rgba(91,141,238,0.12), rgba(91,141,238,0.04)); border-color: rgba(91,141,238,0.3); }
+.dl-card-all .dl-count { color: var(--green); }
+.dl-empty { grid-column: 1 / -1; color: var(--muted); font-size: 0.9rem; padding: 2rem; text-align: center; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); }
+@media (max-width: 720px) { .download-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 480px) { .download-grid { grid-template-columns: 1fr; } }
+
+/* ─── Sources grid ────────────────────────────────────────────────────── */
+.sources-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.src-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.src-card-off { opacity: 0.55; }
+.src-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.src-name { font-weight: 600; font-size: 0.95rem; }
+.src-desc { font-size: 0.8rem; color: var(--muted); line-height: 1.5; flex: 1; }
+.src-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.src-count { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+.src-off { font-size: 0.72rem; color: var(--muted); font-style: italic; }
+.badge { font-size: 0.68rem; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+.badge-ok { background: rgba(76,175,125,0.15); color: var(--green); }
+.badge-info { background: rgba(91,141,238,0.15); color: var(--accent); }
+.badge-warn { background: rgba(245,200,66,0.15); color: var(--yellow); }
+@media (max-width: 720px) { .sources-grid { grid-template-columns: 1fr; } }
+
+/* ─── Share ───────────────────────────────────────────────────────────── */
+.share-section { text-align: center; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2.5rem 1.5rem; }
+.share-section .section-sub { margin: 0 auto 1.5rem; }
+.share-btns { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
 
 /* ─── Hot skills chips ────────────────────────────────────────────────── */
 .skill-chip {

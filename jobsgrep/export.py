@@ -212,7 +212,7 @@ def _safe_sheet_name(name: str, used: set[str]) -> str:
 
 
 def export_segmented(jobs: list[RawJob], output_dir: Path) -> Path:
-    """Build the segmented workbook and return its path."""
+    """Build the full segmented workbook (all role tabs + All Jobs) and return its path."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -242,4 +242,34 @@ def export_segmented(jobs: list[RawJob], output_dir: Path) -> Path:
     wb.save(str(out_path))
     logger.info("exported %d jobs across %d role tabs -> %s",
                 len(jobs), sum(1 for f in ROLE_ORDER if groups.get(f)), out_path.name)
+    return out_path
+
+
+def build_family_workbook(jobs: list[RawJob], family: str, output_dir: Path) -> Path | None:
+    """Build a one-family workbook (Start Here + that role tab). Returns path or None if empty."""
+    from .insights import ROLE_SLUGS
+
+    fam_jobs = [j for j in jobs if classify_role_family(j.title) == family]
+    if not fam_jobs:
+        return None
+    fam_jobs.sort(
+        key=lambda j: (_LEVEL_RANK.get(classify_level(j.title), 99), j.company.lower())
+    )
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    slug = ROLE_SLUGS.get(family, "jobs")
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    out_path = output_dir / f"jobsgrep_{slug}_{ts}.xlsx"
+
+    wb = Workbook()
+    used: set[str] = set()
+    start = wb.active
+    start.title = _safe_sheet_name("Start Here", used)
+    _write_start_here(start, {family: fam_jobs}, len(fam_jobs))
+    ws = wb.create_sheet(_safe_sheet_name(family, used))
+    _write_jobs_sheet(ws, fam_jobs)
+
+    wb.save(str(out_path))
+    logger.info("exported %d %s jobs -> %s", len(fam_jobs), family, out_path.name)
     return out_path

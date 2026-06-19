@@ -19,7 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sse_starlette.sse import EventSourceResponse
 
 from .auth.middleware import AuthDep
-from .config import get_enabled_sources, get_settings
+from .config import SOURCE_REGISTRY, get_enabled_sources, get_settings
 from .legal.rate_limiter import check_user_rate_limit
 from .logging_config import setup_logging
 from .models import (
@@ -915,6 +915,86 @@ async def trending_skills():
         pass
 
     return [{"skill": s, "count": c} for s, c in counts.most_common(20)]
+
+
+@app.get("/api/stats")
+async def corpus_stats():
+    """Public dashboard data: freshness, totals, per-source counts, aggregates."""
+    from .job_cache import get_all_cached_jobs, list_entries
+    from .insights import compute_stats
+
+    jobs = get_all_cached_jobs()
+    agg = compute_stats(jobs)
+
+    entries = list_entries()
+    last_updated = max((e.get("stored_at", 0) for e in entries), default=0)
+
+    enabled = get_enabled_sources()
+    src_counts = {s["label"]: s["count"] for s in agg["by_source"]}
+    sources = [
+        {
+            "name": name,
+            "type": meta.source_type.value,
+            "enabled": name in enabled,
+            "description": meta.description,
+            "tos_url": meta.tos_url,
+            "job_count": src_counts.get(name, 0),
+        }
+        for name, meta in SOURCE_REGISTRY.items()
+    ]
+
+    return {
+        "last_updated": last_updated or None,
+        "total_jobs": agg["total"],
+        "remote": agg["remote"],
+        "by_role_family": agg["by_role_family"],
+        "by_level": agg["by_level"],
+        "by_location": agg["by_location"],
+        "top_companies": agg["top_companies"],
+        "sources": sources,
+    }
+
+
+@app.get("/api/packs/{slug}")
+async def download_pack(slug: str):
+    """Download a job pack as Excel. slug='all' for the full workbook, else a role-family slug.
+
+    Packs are generated once per corpus refresh and cached on disk (filename keyed
+    by the corpus version), so repeat downloads are served instantly.
+    """
+    import shutil
+    from .job_cache import get_all_cached_jobs, list_entries
+    from .export import export_segmented, build_family_workbook
+    from .insights import SLUG_TO_ROLE
+
+    jobs = get_all_cached_jobs()
+    if not jobs:
+        raise HTTPException(status_code=404, detail="No jobs cached yet. Check back soon.")
+
+    if slug != "all" and slug not in SLUG_TO_ROLE:
+        raise HTTPException(status_code=404, detail=f"Unknown category '{slug}'")
+
+    # Version the cache by the newest corpus entry so a refresh invalidates it.
+    version = int(max((e.get("stored_at", 0) for e in list_entries()), default=0))
+    _PACKS_DIR = _REPORTS_DIR / "packs"
+    _PACKS_DIR.mkdir(parents=True, exist_ok=True)
+    cached = _PACKS_DIR / f"jobsgrep_{slug}_{version}.xlsx"
+    download_name = f"jobsgrep_{slug}.xlsx"
+
+    if not cached.exists():
+        if slug == "all":
+            produced = export_segmented(jobs, _PACKS_DIR)
+        else:
+            produced = build_family_workbook(jobs, SLUG_TO_ROLE[slug], _PACKS_DIR)
+            if not produced:
+                raise HTTPException(status_code=404, detail=f"No {SLUG_TO_ROLE[slug]} jobs cached yet")
+        shutil.move(str(produced), str(cached))
+
+    return FileResponse(
+        path=str(cached),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=download_name,
+    )
 
 
 @app.get("/api/history")

@@ -64,9 +64,7 @@
     // Build footer text
     const footerSources = $('footer-sources');
     if (footerSources) {
-      const names = sources.map(s => s.name);
-      if (!names.includes('Google Jobs')) names.push('Google Jobs');
-      footerSources.textContent = names.join(', ');
+      footerSources.textContent = sources.map(s => s.name).join(', ');
     }
   }).catch(() => {});
 

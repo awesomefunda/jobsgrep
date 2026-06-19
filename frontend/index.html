@@ -3,170 +3,270 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JobsGrep — Tech Job Search Engine</title>
-  <meta name="description" content="Search thousands of active tech jobs from Greenhouse, Lever, Ashby, YC companies, HN Hiring, and more. Get a clean Excel tracker with every lead — instantly.">
-  <meta name="keywords" content="tech jobs, software engineer jobs, engineering manager jobs, product manager jobs, job search, job aggregator, USA tech jobs">
+  <title>JobsGrep — Every Open Tech Job in One Spreadsheet (Free)</title>
+  <meta name="description" content="Download every open tech job — Software Engineer, Data, ML, DevOps, Security, PM, Engineering Manager — as a free Excel sheet aggregated from Greenhouse, Lever, Ashby, SmartRecruiters, Adzuna, HN & YC. Then rank them against your resume with your own AI.">
+  <meta name="keywords" content="tech jobs spreadsheet, software engineer jobs excel, download tech jobs, job aggregator, rank jobs with AI, ChatGPT job search, Claude resume ranking, data engineer jobs, engineering manager jobs, product manager jobs">
   <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#0b1120">
   <link rel="canonical" href="https://jobsgrep.com/">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://jobsgrep.com/">
-  <meta property="og:title" content="JobsGrep — Tech Job Search Engine">
-  <meta property="og:description" content="Search thousands of active tech jobs from Greenhouse, Lever, Ashby, YC companies and more. Download a clean Excel report with every lead.">
+  <meta property="og:title" content="JobsGrep — Every Open Tech Job in One Spreadsheet (Free)">
+  <meta property="og:description" content="Download all open tech jobs as a free Excel sheet, then let your own AI rank them against your resume. Updated continuously from public job boards.">
   <meta property="og:image" content="https://jobsgrep.com/favicon.png">
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="JobsGrep — Tech Job Search Engine">
-  <meta name="twitter:description" content="Search thousands of active tech jobs. Get a clean Excel report instantly.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="JobsGrep — Every Open Tech Job in One Spreadsheet">
+  <meta name="twitter:description" content="Free Excel of all open tech jobs. Rank them against your resume with ChatGPT, Claude, or Gemini.">
   <meta name="twitter:image" content="https://jobsgrep.com/favicon.png">
 
   <link rel="icon" type="image/svg+xml" href="/favicon.ico">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "JobsGrep",
+    "url": "https://jobsgrep.com/",
+    "description": "Download every open tech job as a free Excel spreadsheet, then rank them against your resume with your own AI.",
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": "https://jobsgrep.com/?q={search_term_string}",
+      "query-input": "required name=search_term_string"
+    }
+  }
+  </script>
 </head>
 <body>
 
 <header>
   <span class="logo">⚡ JobsGrep</span>
-  <span class="mode-badge">LOCAL</span>
+  <nav class="header-nav">
+    <a href="#how">How it works</a>
+    <a href="#downloads">Downloads</a>
+    <a href="#sources">Sources</a>
+    <a href="https://github.com/awesomefanda" target="_blank" rel="noopener">GitHub</a>
+    <span class="mode-badge">LOCAL</span>
+  </nav>
 </header>
 
 <main>
 
-  <div class="search-card">
-    <h1>Find your next role</h1>
-    <p class="description">A high-performance gateway to thousands of active tech roles. We monitor the recruitment boards of Greenhouse, Lever, Ashby, YC hiring networks, and Google Jobs to build a massive, real-time index. Skip the noise—get a clean, organized Excel tracker with every lead you need, instantly.</p>
-
-    <textarea id="query" rows="3" autofocus></textarea>
-
-    <div class="row" style="margin-top:0.75rem; align-items: center; gap: 1rem;">
-      <button id="search-btn">Search →</button>
+  <!-- ─── Hero ─────────────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="freshness" id="freshness">
+      <span class="dot"></span>
+      <span id="freshness-text">Loading job data…</span>
     </div>
-    <div style="margin-top:0.6rem; font-size:0.78rem; color:var(--muted)">
-      Tip: press Ctrl+Enter to search
+    <h1>Every open tech job,<br>in one spreadsheet.</h1>
+    <p class="hero-sub">
+      JobsGrep collects open roles from across the tech hiring world into a clean,
+      downloadable Excel sheet. Grab the sheet for your role, drop it into
+      <strong>ChatGPT, Claude, or Gemini</strong> with your resume, and let your own
+      AI rank every job against <em>your</em> experience — in one shot.
+    </p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="/api/packs/all" id="download-all">⬇ Download all jobs (Excel)</a>
+      <a class="btn btn-ghost" href="#downloads">Browse by category ↓</a>
     </div>
-    <div class="supported-note">
-      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      Currently optimized for US tech roles. More regions and job types coming soon.
+    <div class="hero-stats" id="hero-stats">
+      <div class="stat"><span class="stat-num" id="stat-jobs">—</span><span class="stat-label">open jobs</span></div>
+      <div class="stat"><span class="stat-num" id="stat-sources">—</span><span class="stat-label">live sources</span></div>
+      <div class="stat"><span class="stat-num" id="stat-remote">—</span><span class="stat-label">remote-friendly</span></div>
     </div>
-  </div>
+  </section>
 
-  <!-- Search history (hidden when empty) -->
-  <div id="history-panel" style="display:none; width:100%">
-    <div class="history-header">
-      <span class="history-title">Recent searches</span>
-      <button id="clear-history-btn" class="history-clear">Clear</button>
-    </div>
-    <div id="history-list"></div>
-  </div>
-
-  <!-- Progress panel (hidden until search starts) -->
-  <div id="progress-panel">
-    <div class="progress-header">
-      <div class="progress-title">
-        <span class="pulse-dot"></span>
-        <span id="progress-stage-label">Starting…</span>
+  <!-- ─── How it works ─────────────────────────────────────────────────── -->
+  <section id="how" class="section">
+    <h2 class="section-title">How it works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Download your role</h3>
+        <p>Pick the sheet for your role family below. Each one has a <strong>Level</strong> column so you can filter by seniority in Excel.</p>
       </div>
-      <div class="progress-meta">
-        <span id="jobs-live-count" style="display:none">
-          <span id="jobs-count-num">0</span> jobs found
-        </span>
-        <span class="progress-elapsed" id="elapsed">0s</span>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Paste it into your AI</h3>
+        <p>Open ChatGPT, Claude, or Gemini. Paste the job rows plus your resume, and use the ranking prompt (one click to copy).</p>
+        <button class="btn btn-small" id="copy-prompt">⧉ Copy ranking prompt</button>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Get a ranked shortlist</h3>
+        <p>Your AI scores every job against your experience and hands back a ranked list with reasons, gaps, and tailored hooks.</p>
+      </div>
+    </div>
+    <p class="how-note">No accounts. No tracking your resume — ranking happens on <em>your</em> machine, with <em>your</em> AI. JobsGrep only ships the data.</p>
+  </section>
+
+  <!-- ─── Insights ─────────────────────────────────────────────────────── -->
+  <section id="insights" class="section">
+    <h2 class="section-title">The tech job market, right now</h2>
+    <p class="section-sub">Live snapshot from the current job corpus — useful whether you're hunting, negotiating, or planning a move.</p>
+    <div class="charts-grid">
+      <div class="chart-card chart-wide">
+        <h3>Jobs by role family</h3>
+        <div class="chart-box"><canvas id="chart-roles"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Remote vs onsite</h3>
+        <div class="chart-box"><canvas id="chart-remote"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>By seniority level</h3>
+        <div class="chart-box"><canvas id="chart-levels"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Top locations</h3>
+        <div class="chart-box"><canvas id="chart-locations"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Top hiring companies</h3>
+        <div class="chart-box"><canvas id="chart-companies"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Download by category ─────────────────────────────────────────── -->
+  <section id="downloads" class="section">
+    <h2 class="section-title">Download by category</h2>
+    <p class="section-sub">Each pack is a ready-to-rank Excel file with a Start Here tab (the AI prompt) and a Level column.</p>
+    <div class="download-grid" id="download-grid">
+      <div class="dl-empty">Loading job packs…</div>
+    </div>
+  </section>
+
+  <!-- ─── Search (specific role) ───────────────────────────────────────── -->
+  <section id="search" class="section">
+    <h2 class="section-title">Or search a specific role</h2>
+    <div class="search-card">
+      <p class="description">Looking for something specific? Search the live corpus and download a tracker for just those matches.</p>
+      <textarea id="query" rows="2"></textarea>
+      <div class="row" style="margin-top:0.75rem; align-items:center; gap:1rem;">
+        <button id="search-btn">Search →</button>
+        <span style="font-size:0.78rem; color:var(--muted)">Tip: Ctrl+Enter to search</span>
       </div>
     </div>
 
-    <div class="progress-bar-wrap"><div class="progress-bar"></div></div>
+    <!-- Search history (hidden when empty) -->
+    <div id="history-panel" style="display:none; width:100%">
+      <div class="history-header">
+        <span class="history-title">Recent searches</span>
+        <button id="clear-history-btn" class="history-clear">Clear</button>
+      </div>
+      <div id="history-list"></div>
+    </div>
 
-    <div class="stage-steps">
-      <div class="stage-step" data-stage="parsing">
-        <div class="step-icon">1</div>
-        <div class="step-body">
-          <div class="step-label">Parsing query</div>
-          <div class="step-detail">Understanding your requirements</div>
+    <!-- Progress panel (hidden until search starts) -->
+    <div id="progress-panel">
+      <div class="progress-header">
+        <div class="progress-title">
+          <span class="pulse-dot"></span>
+          <span id="progress-stage-label">Starting…</span>
+        </div>
+        <div class="progress-meta">
+          <span id="jobs-live-count" style="display:none">
+            <span id="jobs-count-num">0</span> jobs found
+          </span>
+          <span class="progress-elapsed" id="elapsed">0s</span>
         </div>
       </div>
-      <div class="stage-step" data-stage="searching">
-        <div class="step-icon">2</div>
-        <div class="step-body">
-          <div class="step-label">Searching local index</div>
-          <div class="step-detail" id="searching-detail">Filtering from master job cache…</div>
+      <div class="progress-bar-wrap"><div class="progress-bar"></div></div>
+      <div class="stage-steps">
+        <div class="stage-step" data-stage="parsing">
+          <div class="step-icon">1</div>
+          <div class="step-body">
+            <div class="step-label">Parsing query</div>
+            <div class="step-detail">Understanding your requirements</div>
+          </div>
+        </div>
+        <div class="stage-step" data-stage="searching">
+          <div class="step-icon">2</div>
+          <div class="step-body">
+            <div class="step-label">Searching local index</div>
+            <div class="step-detail" id="searching-detail">Filtering from master job cache…</div>
+          </div>
+        </div>
+        <div class="stage-step" data-stage="reporting">
+          <div class="step-icon">3</div>
+          <div class="step-body">
+            <div class="step-label">Building report</div>
+            <div class="step-detail">Generating your Excel file</div>
+          </div>
         </div>
       </div>
-      <div class="stage-step" data-stage="reporting">
-        <div class="step-icon">3</div>
-        <div class="step-body">
-          <div class="step-label">Building report</div>
-          <div class="step-detail">Generating your Excel file</div>
+      <div class="source-chips" id="source-chips"></div>
+      <div class="progress-hint">Served from the cached corpus — usually a couple of seconds.</div>
+    </div>
+
+    <!-- Results panel (hidden until complete) -->
+    <div id="results-panel">
+      <div class="results-header">
+        <div>
+          <h2>Results</h2>
+          <div id="results-summary" style="font-size:0.85rem; color:var(--muted); margin-top:2px;"></div>
+        </div>
+        <div style="display:flex; gap:0.75rem; align-items:center;">
+          <a id="download-btn" class="download-btn" href="#" download style="display:none">⬇ Download Excel</a>
         </div>
       </div>
-    </div>
-
-    <div class="source-chips" id="source-chips"></div>
-    <div class="progress-hint">This usually takes 1–3 minutes depending on the number of matching companies.</div>
-  </div>
-
-  <!-- Results panel (hidden until complete) -->
-  <div id="results-panel">
-    <div class="results-header">
-      <div>
-        <h2>Results</h2>
-        <div id="results-summary" style="font-size:0.85rem; color:var(--muted); margin-top:2px;"></div>
+      <div id="ai-tip" style="display:none; margin-bottom:1.2rem; padding:0.85rem 1rem; border-radius:8px; background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%); border:1px solid #334155; font-size:0.82rem; line-height:1.6; color:#cbd5e1;">
+        <span style="font-weight:700; color:#a78bfa;">Pro tip:</span>
+        The sheet's <strong style="color:#e2e8f0;">Start Here</strong> tab has a ready-made ranking prompt — paste it with your resume into <strong style="color:#e2e8f0;">ChatGPT, Claude, or Gemini</strong> to score every job against your profile.
       </div>
-      <div style="display: flex; gap: 0.75rem; align-items: center;">
-        <a id="download-btn" class="download-btn" href="#" download style="display:none">
-          ⬇ Download Excel Report
-        </a>
+      <div id="hot-skills-panel" style="display:none; margin-bottom:1.2rem;">
+        <div style="font-size:0.78rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.5rem;">Most In-Demand Skills</div>
+        <div id="hot-skills-list" style="display:flex; flex-wrap:wrap; gap:0.4rem;"></div>
       </div>
+      <table class="jobs-table">
+        <thead><tr><th>Company</th><th>Title</th><th>Source</th></tr></thead>
+        <tbody id="jobs-body"></tbody>
+      </table>
     </div>
+  </section>
 
-    <!-- AI tip banner (shown after results load) -->
-    <div id="ai-tip" style="display:none; margin-bottom:1.2rem; padding:0.85rem 1rem; border-radius:8px; background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%); border:1px solid #334155; font-size:0.82rem; line-height:1.6; color:#cbd5e1;">
-      <span style="font-weight:700; color:#a78bfa;">Pro tip:</span>
-      The Excel includes an <strong style="color:#e2e8f0;">AI Toolkit</strong> sheet with ready-made prompts — open it, paste your resume, then drop the file into
-      <strong style="color:#e2e8f0;">ChatGPT, Claude, or Gemini</strong> to:
-      <span style="color:#a78bfa;">tailor your resume</span> to specific roles,
-      <span style="color:#a78bfa;">score all jobs</span> against your profile,
-      <span style="color:#a78bfa;">find skill gaps</span>, and
-      <span style="color:#a78bfa;">write personalized LinkedIn messages</span> to hiring managers — all in one shot.
+  <!-- ─── Sources ──────────────────────────────────────────────────────── -->
+  <section id="sources" class="section">
+    <h2 class="section-title">Where the data comes from</h2>
+    <p class="section-sub">Every source is a public or licensed API — no terms-of-service grey areas. Counts and freshness update with each refresh.</p>
+    <div class="sources-grid" id="sources-grid">
+      <div class="dl-empty">Loading sources…</div>
     </div>
+  </section>
 
-    <!-- Hot skills panel (shown after results load) -->
-    <div id="hot-skills-panel" style="display:none; margin-bottom:1.2rem;">
-      <div style="font-size:0.78rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.5rem;">
-        Most In-Demand Skills
-      </div>
-      <div id="hot-skills-list" style="display:flex; flex-wrap:wrap; gap:0.4rem;"></div>
+  <!-- ─── Share ────────────────────────────────────────────────────────── -->
+  <section id="share" class="section share-section">
+    <h2 class="section-title">Know someone job hunting?</h2>
+    <p class="section-sub">JobsGrep is free and always will be. Sharing it is the best way to support it.</p>
+    <div class="share-btns">
+      <a class="btn btn-ghost" id="share-x" target="_blank" rel="noopener">Share on X</a>
+      <a class="btn btn-ghost" id="share-ln" target="_blank" rel="noopener">Share on LinkedIn</a>
+      <button class="btn btn-ghost" id="share-copy">⧉ Copy link</button>
     </div>
-
-    <table class="jobs-table">
-      <thead>
-        <tr>
-          <th>Company</th>
-          <th>Title</th>
-          <th>Source</th>
-        </tr>
-      </thead>
-      <tbody id="jobs-body">
-      </tbody>
-    </table>
-  </div>
+  </section>
 
 </main>
 
 <footer>
-  Data sourced from public APIs and recruitment boards: <span id="footer-sources">Greenhouse, Lever, Ashby, Recruitee, Workable, HN Hiring, YC, USAJobs, Google Jobs, JobSpy, Levels.fyi, TeamBlind</span>.
+  Data sourced from public &amp; licensed APIs: <span id="footer-sources">Greenhouse, Lever, Ashby, SmartRecruiters, Adzuna, Recruitee, Workable, HN Hiring, YC, USAJobs</span>.
   &nbsp;|&nbsp;
   <a href="/docs">API Docs</a> &nbsp;|&nbsp;
   <a href="/api/health">Health</a> &nbsp;|&nbsp;
-  <a href="https://github.com/awesomefanda" target="_blank">GitHub</a>
+  <a href="https://github.com/awesomefanda" target="_blank" rel="noopener">GitHub</a>
 </footer>
 
 <div id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/dashboard.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
