@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     jsearch_country: str = "us"
     jsearch_num_pages: int = 1
 
+    # Apify actor for LinkedIn jobs (paid service; runs in any mode via API).
+    # $5/mo free credit. Pick a LinkedIn jobs actor and set its slug + token.
+    apify_token: str = ""
+    apify_actor: str = "bebity~linkedin-jobs-scraper"
+    apify_results_per_term: int = 50
+    apify_location: str = "United States"
+
     # JobSpy scraper (LOCAL/PRIVATE only) — Indeed + Google Jobs by default.
     # Google Jobs itself aggregates LinkedIn/Glassdoor/ZipRecruiter/company pages.
     jobspy_sites: str = "indeed,google"        # comma-separated: indeed,google,linkedin,glassdoor,zip_recruiter
@@ -81,7 +88,7 @@ class Settings(BaseSettings):
         Path("/tmp/jobsgrep") if os.environ.get("VERCEL") else Path.home() / ".jobsgrep"
     )
 
-    @field_validator("groq_api_key", "gemini_api_key", "jobsgrep_access_token", "usajobs_api_key", "push_token", "adzuna_app_id", "adzuna_app_key", "jsearch_api_key", mode="before")
+    @field_validator("groq_api_key", "gemini_api_key", "jobsgrep_access_token", "usajobs_api_key", "push_token", "adzuna_app_id", "adzuna_app_key", "jsearch_api_key", "apify_token", mode="before")
     @classmethod
     def strip_api_keys(cls, v):
         """Strip whitespace from API keys and tokens to prevent 401 errors."""
@@ -222,6 +229,14 @@ SOURCE_REGISTRY: dict[str, DataSourceMeta] = {
         rate_limit=RateLimit(calls_per_minute=10, calls_per_hour=200),
         tos_url="https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch",
         description="JSearch — Google for Jobs via API (free RapidAPI key required)",
+    ),
+    "apify": DataSourceMeta(
+        name="apify",
+        source_type=DataSourceType.OFFICIAL_API,
+        enabled_modes=_ALL_MODES,
+        rate_limit=RateLimit(calls_per_minute=5, calls_per_hour=60),
+        tos_url="https://apify.com/store",
+        description="Apify actor — LinkedIn jobs ($5/mo free credit; token required)",
     ),
     "jobspy": DataSourceMeta(
         name="jobspy",
