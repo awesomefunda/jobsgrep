@@ -27,6 +27,15 @@ logger = logging.getLogger("jobsgrep.prefetch")
 CORPUS_KEY = "corpus"
 CORPUS_LABEL = "All tech jobs (corpus)"
 
+# Sources actually fetched into the corpus (and shown on the dashboard).
+# USAJobs is intentionally excluded (requires an API key). JobSpy is a scraper
+# that only runs in LOCAL/PRIVATE — where prefetch is run — and adds Google Jobs,
+# Indeed, LinkedIn & Glassdoor coverage before the corpus is pushed to prod.
+CORPUS_SOURCE_NAMES = [
+    "greenhouse", "lever", "ashby", "recruitee", "workable",
+    "smartrecruiters", "adzuna", "hn_hiring", "yc_companies", "jobspy",
+]
+
 
 async def fetch_corpus() -> int:
     """Fetch every job from all enabled sources once and cache it. Returns count.
@@ -41,11 +50,13 @@ async def fetch_corpus() -> int:
     from .sources.greenhouse import GreenhouseSource
     from .sources.lever import LeverSource
     from .sources.ashby import AshbySource
+    from .sources.recruitee import RecruiteeSource
+    from .sources.workable import WorkableSource
     from .sources.hn_hiring import HNHiringSource
     from .sources.yc_companies import YCCompaniesSource
-    from .sources.usajobs import USAJobsSource
     from .sources.smartrecruiters import SmartRecruitersSource
     from .sources.adzuna import AdzunaSource
+    from .sources.jobspy_source import JobSpySource
 
     match_all = ParsedQuery()  # all fields default to empty / False
     enabled = get_enabled_sources()
@@ -54,11 +65,13 @@ async def fetch_corpus() -> int:
         "greenhouse": GreenhouseSource(),
         "lever": LeverSource(),
         "ashby": AshbySource(),
-        "hn_hiring": HNHiringSource(),
-        "yc_companies": YCCompaniesSource(),
-        "usajobs": USAJobsSource(),
+        "recruitee": RecruiteeSource(),
+        "workable": WorkableSource(),
         "smartrecruiters": SmartRecruitersSource(),
         "adzuna": AdzunaSource(),
+        "hn_hiring": HNHiringSource(),
+        "yc_companies": YCCompaniesSource(),
+        "jobspy": JobSpySource(),
     }
 
     async def run_source(name: str, source):
@@ -89,12 +102,6 @@ async def fetch_corpus() -> int:
     if not all_jobs:
         logger.warning("corpus: no jobs fetched from any source")
         return 0
-
-    # Keep only tech roles — boards include sales/marketing/ops in volume.
-    from .taxonomy import filter_tech
-    before = len(all_jobs)
-    all_jobs = filter_tech(all_jobs)
-    logger.info("corpus: kept %d tech jobs of %d fetched", len(all_jobs), before)
 
     cache_store(CORPUS_KEY, all_jobs, source="prefetch", label=CORPUS_LABEL)
     logger.info("corpus: cached %d unique jobs", len(all_jobs))

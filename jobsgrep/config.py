@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     adzuna_country: str = "us"
     adzuna_max_pages: int = 5
 
+    # JobSpy scraper (LOCAL/PRIVATE only) — Indeed + Google Jobs by default.
+    # Google Jobs itself aggregates LinkedIn/Glassdoor/ZipRecruiter/company pages.
+    jobspy_sites: str = "indeed,google"        # comma-separated: indeed,google,linkedin,glassdoor,zip_recruiter
+    jobspy_results_per_term: int = 100
+    jobspy_location: str = "United States"
+    jobspy_hours_old: int = 336                # 14 days
+
     # Rate limits
     search_rate_limit: int = 10      # searches/hour per user
     source_rate_limit: int = 60      # calls/minute per source
@@ -208,7 +215,7 @@ SOURCE_REGISTRY: dict[str, DataSourceMeta] = {
         enabled_modes=_NON_PUBLIC,
         rate_limit=RateLimit(calls_per_minute=5, calls_per_hour=30),
         tos_url="",
-        description="JobSpy web scraper (Indeed, LinkedIn, Glassdoor) — LOCAL + PRIVATE modes",
+        description="JobSpy scraper (Google Jobs, Indeed, LinkedIn, Glassdoor) — LOCAL + PRIVATE modes",
     ),
     "levels_fyi": DataSourceMeta(
         name="levels_fyi",

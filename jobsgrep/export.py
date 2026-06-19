@@ -213,8 +213,6 @@ def _safe_sheet_name(name: str, used: set[str]) -> str:
 
 def export_segmented(jobs: list[RawJob], output_dir: Path) -> Path:
     """Build the full segmented workbook (all role tabs + All Jobs) and return its path."""
-    from .taxonomy import filter_tech
-    jobs = filter_tech(jobs)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -250,9 +248,8 @@ def export_segmented(jobs: list[RawJob], output_dir: Path) -> Path:
 def build_family_workbook(jobs: list[RawJob], family: str, output_dir: Path) -> Path | None:
     """Build a one-family workbook (Start Here + that role tab). Returns path or None if empty."""
     from .insights import ROLE_SLUGS
-    from .taxonomy import filter_tech
 
-    fam_jobs = [j for j in filter_tech(jobs) if classify_role_family(j.title) == family]
+    fam_jobs = [j for j in jobs if classify_role_family(j.title) == family]
     if not fam_jobs:
         return None
     fam_jobs.sort(

@@ -64,8 +64,12 @@
     });
   }
 
-  function bar(id, rows, horizontal) {
+  function bar(id, rows, horizontal, countAxisTitle) {
     if (!rows || !rows.length) return;
+    // The value (count) axis is x for horizontal bars, y for vertical bars.
+    const countTitle = countAxisTitle
+      ? { display: true, text: countAxisTitle, color: '#94a3b8', font: { size: 11 } }
+      : { display: false };
     makeChart(id, {
       type: 'bar',
       data: {
@@ -76,20 +80,37 @@
         indexAxis: horizontal ? 'y' : 'x',
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { x: { grid: { display: !horizontal } }, y: { grid: { display: horizontal } } },
+        scales: {
+          x: { grid: { display: !horizontal }, title: horizontal ? countTitle : { display: false } },
+          y: { grid: { display: horizontal }, title: horizontal ? { display: false } : countTitle },
+        },
       },
     });
   }
 
   // ─── render ─────────────────────────────────────────────────────────────
+  function absDate(unixSeconds) {
+    if (!unixSeconds) return null;
+    return new Date(unixSeconds * 1000).toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    });
+  }
+
   function renderFreshness(stats) {
     const txt = $('freshness-text');
     if (!txt) return;
+    const date = absDate(stats.last_updated);
     const rel = relTime(stats.last_updated);
     const live = (stats.sources || []).filter(s => s.enabled && s.job_count > 0).length;
-    txt.textContent = rel
-      ? `Job data updated ${rel} · ${fmt(stats.total_jobs)} jobs from ${live} sources`
+    txt.textContent = date
+      ? `Last scraped ${date} (${rel}) · ${fmt(stats.total_jobs)} jobs from ${live} sources`
       : `${fmt(stats.total_jobs)} jobs cached`;
+  }
+
+  function renderMode(stats) {
+    const badge = document.querySelector('.mode-badge');
+    if (badge && stats.mode) badge.textContent = stats.mode;
   }
 
   function renderHeroStats(stats) {
@@ -111,7 +132,7 @@
       { label: 'Remote-friendly', count: r.remote || 0 },
       { label: 'Onsite', count: r.onsite || 0 },
     ], true);
-    bar('chart-levels', stats.by_level, false);
+    bar('chart-levels', stats.by_level, false, 'Number of jobs');
     bar('chart-locations', (stats.by_location || []).slice(0, 10), true);
     bar('chart-companies', (stats.top_companies || []).slice(0, 10), true);
   }
@@ -156,8 +177,12 @@
   function renderSources(stats) {
     const grid = $('sources-grid');
     if (!grid) return;
-    const sources = (stats.sources || []).slice().sort((a, b) => b.job_count - a.job_count);
-    if (!sources.length) { grid.innerHTML = '<div class="dl-empty">No sources reporting yet.</div>'; return; }
+    // Only show sources that actually have jobs — avoids confusing "0 jobs" cards
+    // from sources whose hardcoded company lists are stale.
+    const sources = (stats.sources || [])
+      .filter(s => s.job_count > 0)
+      .sort((a, b) => b.job_count - a.job_count);
+    if (!sources.length) { grid.innerHTML = '<div class="dl-empty">Sources are refreshing — check back shortly.</div>'; return; }
     grid.innerHTML = sources.map(s => {
       const t = sourceType(s.type);
       const status = s.enabled ? '' : '<span class="src-off">disabled in this mode</span>';
@@ -213,6 +238,7 @@
     .then(r => r.json())
     .then(stats => {
       renderFreshness(stats);
+      renderMode(stats);
       renderHeroStats(stats);
       renderCharts(stats);
       renderDownloads(stats);

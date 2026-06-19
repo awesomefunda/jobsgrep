@@ -49,12 +49,7 @@
 
   // ─── Fetch mode info ─────────────────────────────────────────────────
   fetch('/api/sources').then(r => r.json()).then(sources => {
-    const badge = document.querySelector('.mode-badge');
-    if (badge) {
-      // Infer mode from which sources are present
-      const hasJobspy = sources.some(s => s.name === 'jobspy');
-      badge.textContent = hasJobspy ? 'LOCAL' : 'CLOUD';
-    }
+    // Mode badge is set by dashboard.js from /api/stats (the real deploy mode).
     // Pre-render source chips
     if (sourceChips) {
       sourceChips.innerHTML = sources

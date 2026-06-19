@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 
 ROLE_OTHER = "Other"
+ROLE_NON_TECH = "Non-Tech"
 
 # Role families in priority order. First matching family wins.
 _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
@@ -118,7 +119,7 @@ ROLE_ORDER: list[str] = [
     "Software Engineering", "Data & ML", "Infrastructure & DevOps", "Security",
     "QA & Test", "Solutions & Sales Engineering", "Developer Relations",
     "IT & Support", "Technical Writing", "Design", "Engineering Management",
-    "Product Management", "Program & Project Management", ROLE_OTHER,
+    "Product Management", "Program & Project Management", ROLE_OTHER, ROLE_NON_TECH,
 ]
 
 # Clearly non-technical roles to drop from a tech-jobs corpus when a title
@@ -165,11 +166,18 @@ _NON_TECH_RE = re.compile(
 
 
 def classify_role_family(title: str) -> str:
-    """Return the role family for a job title (e.g. 'Software Engineering')."""
+    """Return the role family for a job title.
+
+    Tech families win first; titles that match non-tech keywords (sales,
+    recruiting, marketing, finance, …) are labeled 'Non-Tech' and kept separate;
+    everything else is 'Other'.
+    """
     t = title.lower()
     for family, pat in _ROLE_PATTERNS:
         if pat.search(t):
             return family
+    if _NON_TECH_RE.search(t):
+        return ROLE_NON_TECH
     return ROLE_OTHER
 
 
@@ -188,15 +196,8 @@ def classify(title: str) -> tuple[str, str]:
 
 
 def is_tech_role(title: str) -> bool:
-    """True if a title belongs in a tech-jobs corpus.
-
-    Anything classified into a known family is kept. Titles that fall into the
-    "Other" bucket are kept unless they match an explicit non-tech keyword
-    (sales, recruiting, marketing, finance, HR, etc.).
-    """
-    if classify_role_family(title) != ROLE_OTHER:
-        return True
-    return not _NON_TECH_RE.search(title.lower())
+    """True if a title is a tech (or tech-adjacent) role, i.e. not 'Non-Tech'."""
+    return classify_role_family(title) != ROLE_NON_TECH
 
 
 def filter_tech(jobs):

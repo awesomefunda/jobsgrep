@@ -132,6 +132,8 @@ CATEGORY_INTROS: dict[str, str] = {
         "Technical program and project management roles.",
     "Other":
         "Tech-adjacent roles that don't fit a single discipline.",
+    "Non-Tech":
+        "Non-engineering roles posted at tech companies — sales, marketing, operations, finance, HR, legal, and more.",
 }
 
 

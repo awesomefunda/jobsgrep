@@ -252,13 +252,12 @@ def _filter_from_index(parsed, query: str) -> list:
     """
     from .job_cache import search_index
     from .scoring.engine import filter_jobs
-    from .taxonomy import filter_tech
 
     # Search by parsed title words, not raw query text — the raw query contains
     # location/filler words ("in usa", "near me") that don't appear in job
     # content and would over-constrain the keyword AND.
     index_query = " ".join(parsed.titles + parsed.title_variations) if parsed.titles else query
-    filtered = filter_tech(search_index(index_query))
+    filtered = search_index(index_query)
 
     query_words = set(query.lower().split())
     had_broad_us = (
@@ -980,20 +979,31 @@ async def corpus_stats():
     last_updated = max((e.get("stored_at", 0) for e in entries), default=0)
 
     enabled = get_enabled_sources()
-    src_counts = {s["label"]: s["count"] for s in agg["by_source"]}
+    from .prefetch import CORPUS_SOURCE_NAMES
+    raw_counts = {s["label"]: s["count"] for s in agg["by_source"]}
+
+    def _count_for(name: str) -> int:
+        # Some sources tag jobs with a suffix, e.g. "yc_companies→greenhouse"
+        # or "jobspy:google" — sum every variant under the base source name.
+        return sum(
+            c for lbl, c in raw_counts.items()
+            if lbl == name or lbl.startswith(f"{name}:") or lbl.startswith(f"{name}→")
+        )
+
     sources = [
         {
             "name": name,
-            "type": meta.source_type.value,
+            "type": SOURCE_REGISTRY[name].source_type.value,
             "enabled": name in enabled,
-            "description": meta.description,
-            "tos_url": meta.tos_url,
-            "job_count": src_counts.get(name, 0),
+            "description": SOURCE_REGISTRY[name].description,
+            "tos_url": SOURCE_REGISTRY[name].tos_url,
+            "job_count": _count_for(name),
         }
-        for name, meta in SOURCE_REGISTRY.items()
+        for name in CORPUS_SOURCE_NAMES if name in SOURCE_REGISTRY
     ]
 
     return {
+        "mode": get_settings().jobsgrep_mode.value,
         "last_updated": last_updated or None,
         "total_jobs": agg["total"],
         "remote": agg["remote"],
