@@ -41,6 +41,42 @@ CORPUS_SOURCE_NAMES = [
 ]
 
 
+# Sources whose API only ever returns currently-listed (open) roles. Their
+# date fields mean "last modified", not "still open", so we never age them out.
+_LIVE_LISTING_SOURCES = (
+    "greenhouse", "lever", "ashby", "recruitee", "workable",
+    "smartrecruiters", "yc_companies",
+)
+
+
+def _is_open(job, max_age_days: int) -> bool:
+    """True if a posting should be considered open.
+
+    Live ATS listings are always kept (present in the API == open). For
+    aggregator/scraper sources (JobSpy, JSearch, Adzuna, HN), a posting is
+    kept only if its date is recent; undated ones are kept.
+    """
+    if max_age_days <= 0:
+        return True
+    src = (job.source or "").lower()
+    if any(src.startswith(s) for s in _LIVE_LISTING_SOURCES):
+        return True
+    d = (job.date_posted or "").strip()
+    if not d:
+        return True
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.strptime(d[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except Exception:
+        try:
+            dt = datetime.fromisoformat(d.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return True  # unparseable → keep rather than wrongly drop
+    return (datetime.now(timezone.utc) - dt).days <= max_age_days
+
+
 async def fetch_corpus() -> int:
     """Fetch every job from all enabled sources once and cache it. Returns count.
 
@@ -108,6 +144,15 @@ async def fetch_corpus() -> int:
     if not all_jobs:
         logger.warning("corpus: no jobs fetched from any source")
         return 0
+
+    # Keep only open (recent-or-undated) postings.
+    from .config import get_settings
+    max_age = get_settings().max_job_age_days
+    before = len(all_jobs)
+    all_jobs = [j for j in all_jobs if _is_open(j, max_age)]
+    if before != len(all_jobs):
+        logger.info("corpus: dropped %d stale jobs (older than %d days), kept %d",
+                    before - len(all_jobs), max_age, len(all_jobs))
 
     cache_store(CORPUS_KEY, all_jobs, source="prefetch", label=CORPUS_LABEL)
     logger.info("corpus: cached %d unique jobs", len(all_jobs))

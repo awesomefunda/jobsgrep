@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     allow_scrape: bool = False
     min_fit_score: float = 0.7
     usajobs_api_key: str = ""
+    # Keep only "open" jobs: drop postings with a date older than this many days.
+    # Undated jobs (from live ATS boards that only list open roles) are kept.
+    # 0 disables the filter.
+    max_job_age_days: int = 45
 
     # Adzuna aggregator API (free dev tier — https://developer.adzuna.com)
     adzuna_app_id: str = ""
