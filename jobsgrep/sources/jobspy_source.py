@@ -28,6 +28,8 @@ _CORPUS_TERMS = [
     "machine learning engineer", "data scientist", "devops engineer",
     "site reliability engineer", "security engineer", "mobile engineer",
     "engineering manager", "product manager",
+    "asic design engineer", "fpga engineer", "hardware engineer",
+    "rtl design engineer", "embedded engineer",
 ]
 
 

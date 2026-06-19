@@ -112,6 +112,8 @@ CATEGORY_INTROS: dict[str, str] = {
         "DevOps, SRE, platform, cloud, and infrastructure engineering roles keeping production running.",
     "Security":
         "Security engineering, application security, and security operations roles across the industry.",
+    "Hardware & Semiconductor":
+        "Chip and hardware roles — ASIC/FPGA/RTL design, physical design, verification, analog/mixed-signal, PCB, and electrical engineering.",
     "QA & Test":
         "Quality engineering, test automation, and SDET roles.",
     "Solutions & Sales Engineering":

@@ -23,6 +23,7 @@ ROLE_SLUGS: dict[str, str] = {
     "Data & ML": "data-ml",
     "Infrastructure & DevOps": "infrastructure-devops",
     "Security": "security",
+    "Hardware & Semiconductor": "hardware-semiconductor",
     "QA & Test": "qa-test",
     "Solutions & Sales Engineering": "solutions-sales-engineering",
     "Developer Relations": "developer-relations",

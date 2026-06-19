@@ -53,6 +53,16 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
         "penetration tester", "pentester", "security architect",
         "security operations", "security researcher",
     ]),
+    ("Hardware & Semiconductor", [
+        "asic", "fpga", "rtl", "vlsi", "semiconductor", "chip design",
+        "soc design", "physical design", "design verification",
+        "verification engineer", "analog design", "analog", "ic design",
+        "mixed-signal", "mixed signal", "silicon", "hardware engineer",
+        "hardware design", "electrical engineer", "pcb", "layout engineer",
+        "dft", "place and route", "circuit design", "rf engineer",
+        "signal integrity", "power electronics", "board design",
+        "firmware engineer", "embedded hardware",
+    ]),
     ("Design", [
         "ux designer", "ui designer", "product designer", "ux/ui",
         "ui/ux", "design lead", "interaction designer", "visual designer",
@@ -117,9 +127,10 @@ LEVEL_ORDER: list[str] = [
 # Sort/display order for role families.
 ROLE_ORDER: list[str] = [
     "Software Engineering", "Data & ML", "Infrastructure & DevOps", "Security",
-    "QA & Test", "Solutions & Sales Engineering", "Developer Relations",
-    "IT & Support", "Technical Writing", "Design", "Engineering Management",
-    "Product Management", "Program & Project Management", ROLE_OTHER, ROLE_NON_TECH,
+    "Hardware & Semiconductor", "QA & Test", "Solutions & Sales Engineering",
+    "Developer Relations", "IT & Support", "Technical Writing", "Design",
+    "Engineering Management", "Product Management", "Program & Project Management",
+    ROLE_OTHER, ROLE_NON_TECH,
 ]
 
 # Clearly non-technical roles to drop from a tech-jobs corpus when a title

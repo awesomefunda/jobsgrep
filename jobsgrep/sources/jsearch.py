@@ -22,7 +22,8 @@ _CORPUS_TERMS = [
     "software engineer", "senior software engineer", "data engineer",
     "machine learning engineer", "devops engineer", "security engineer",
     "frontend engineer", "backend engineer", "engineering manager",
-    "product manager",
+    "product manager", "asic design engineer", "fpga engineer",
+    "hardware engineer", "rtl design engineer",
 ]
 
 
