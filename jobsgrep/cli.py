@@ -42,21 +42,19 @@ def main() -> None:
     p_add.add_argument("slug")
 
     # run-prefetch
-    p_prefetch = sub.add_parser(
+    sub.add_parser(
         "run-prefetch",
-        help="Fetch + score jobs for common queries and populate the local cache",
+        help="Fetch the entire job corpus once and populate the local cache",
     )
-    p_prefetch.add_argument(
-        "--queries", default="",
-        help="Comma-separated override (default: built-in 10-query list)",
+
+    # export
+    p_export = sub.add_parser(
+        "export",
+        help="Export the cached corpus to a segmented Excel workbook (role tabs + Level column)",
     )
-    p_prefetch.add_argument(
-        "--first-only", action="store_true",
-        help="Only warm up 'Software Engineer' — fastest initial run",
-    )
-    p_prefetch.add_argument(
-        "--no-score", action="store_true", help="Skip AI scoring"
-    )
+    p_export.add_argument("--out", default=".", help="Output directory (default: current dir)")
+    p_export.add_argument("--fetch", action="store_true",
+                          help="Fetch a fresh corpus first, then export")
 
     # push
     p_push = sub.add_parser(
@@ -98,6 +96,8 @@ def main() -> None:
         _cmd_add_company(args)
     elif args.command == "run-prefetch":
         asyncio.run(_cmd_run_prefetch(args))
+    elif args.command == "export":
+        asyncio.run(_cmd_export(args))
     elif args.command == "push":
         asyncio.run(_cmd_push(args))
 
@@ -189,23 +189,33 @@ async def _cmd_health() -> None:
 
 
 async def _cmd_run_prefetch(args) -> None:
-    """Fetch + score jobs for common queries and write to local cache."""
-    from .prefetch import run_prefetch_cycle, _DEFAULT_QUERIES
+    """Fetch the entire job corpus once and write it to the local cache."""
+    from .prefetch import fetch_corpus
 
-    if args.first_only:
-        queries = ["Software Engineer"]
-    elif args.queries:
-        queries = [q.strip() for q in args.queries.split(",") if q.strip()]
-    else:
-        queries = _DEFAULT_QUERIES
+    print("\nFetching full job corpus from all enabled sources (no scoring)...\n")
+    count = await fetch_corpus()
+    print(f"\nDone. {count} unique jobs cached.")
+    print("Run 'jobsgrep push' to upload the corpus to a remote server.")
 
-    print(f"\nPrefetching {len(queries)} quer{'y' if len(queries)==1 else 'ies'} (skip_scoring={args.no_score}):")
-    for q in queries:
-        print(f"  · {q}")
-    print()
 
-    await run_prefetch_cycle(queries, stagger_seconds=20.0, skip_scoring=args.no_score)
-    print("\nDone. Run 'jobsgrep push' to upload results to a remote server.")
+async def _cmd_export(args) -> None:
+    """Export the cached corpus to a segmented Excel workbook."""
+    from pathlib import Path
+    from .export import export_segmented
+    from .job_cache import get_all_cached_jobs
+
+    if args.fetch:
+        from .prefetch import fetch_corpus
+        print("\nFetching fresh corpus first...\n")
+        await fetch_corpus()
+
+    jobs = get_all_cached_jobs()
+    if not jobs:
+        print("No cached jobs found. Run 'jobsgrep run-prefetch' (or pass --fetch) first.")
+        sys.exit(1)
+
+    out = export_segmented(jobs, Path(args.out))
+    print(f"\nExported {len(jobs)} jobs → {out}")
 
 
 def _cmd_add_company(args) -> None:

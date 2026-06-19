@@ -32,7 +32,6 @@ from .models import (
     SearchTask,
 )
 from .nlp.parser import parse_query
-from .scoring.engine import score_jobs
 from .sources.ashby import AshbySource
 from .sources.greenhouse import GreenhouseSource
 from .sources.hn_hiring import HNHiringSource
@@ -161,22 +160,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("seed load failed: %s", e)
 
-    # Start background prefetch (all modes except Vercel serverless).
-    # skip_scoring=True: raw job fetch only, no LLM calls required.
+    # Start background corpus prefetch (all modes except Vercel serverless).
+    # Pure raw fetch — no LLM calls, no scoring.
     import os as _os
     prefetch_task = None
     if settings.prefetch_on_startup and not _os.environ.get("VERCEL"):
         from .prefetch import start_prefetch_loop
-        queries = (
-            [q.strip() for q in settings.prefetch_queries.split(",") if q.strip()]
-            if settings.prefetch_queries else None
-        )
         prefetch_task = asyncio.create_task(
-            start_prefetch_loop(queries=queries,
-                                interval_hours=settings.prefetch_interval_hours,
-                                skip_scoring=True)
+            start_prefetch_loop(interval_hours=settings.prefetch_interval_hours)
         )
-        logger.info("prefetch worker started (skip_scoring=True)")
+        logger.info("prefetch worker started (corpus fetch)")
 
     yield
 
@@ -235,8 +228,64 @@ def _task_response(task: SearchTask) -> StatusResponse:
     )
 
 
+# Country-level geo terms never appear in job location strings (jobs store
+# cities like "San Francisco, CA"), so they must be stripped before filtering.
+_BROAD_GEOS = frozenset({
+    "united states", "usa", "us", "america", "united states of america",
+})
+_INTL_MARKERS = frozenset({
+    "india", "bangalore", "bengaluru", "hyderabad", "pune", "mumbai",
+    "delhi", "chennai", "kolkata", "noida", "gurgaon",
+    "paris", "france", "london", "united kingdom", "germany", "berlin",
+    "munich", "amsterdam", "netherlands", "toronto", "canada",
+    "australia", "sydney", "melbourne", "singapore", "dubai", "uae",
+    "mexico", "brazil", "argentina", "poland", "warsaw", "prague",
+    "budapest", "bucharest", "kyiv", "ukraine",
+})
+
+
+def _filter_from_index(parsed, query: str) -> list:
+    """Return jobs from the cached corpus matching the parsed query (no LLM).
+
+    Keyword-indexes by title, then applies semantic title/location/exclude
+    filtering. Returns [] when nothing matches.
+    """
+    from .job_cache import search_index
+    from .scoring.engine import filter_jobs
+
+    # Search by parsed title words, not raw query text — the raw query contains
+    # location/filler words ("in usa", "near me") that don't appear in job
+    # content and would over-constrain the keyword AND.
+    index_query = " ".join(parsed.titles + parsed.title_variations) if parsed.titles else query
+    filtered = search_index(index_query)
+
+    query_words = set(query.lower().split())
+    had_broad_us = (
+        bool(query_words & _BROAD_GEOS)
+        or "united states" in query.lower()
+        or "united states of america" in query.lower()
+    )
+    effective_locations = [l for l in parsed.locations if l.lower() not in _BROAD_GEOS]
+
+    # Semantic title/location filtering so keyword overlap doesn't return
+    # wrong-role jobs (e.g. "software director" should not yield SWE jobs).
+    if filtered and (parsed.titles or effective_locations or parsed.exclude_keywords):
+        _parsed_copy = parsed.model_copy(update={"locations": effective_locations})
+        filtered = filter_jobs(filtered, _parsed_copy)
+
+    # User asked for US jobs but the broad geo was stripped — drop clearly
+    # non-US listings (India, Europe, etc.).
+    if had_broad_us and not effective_locations and filtered:
+        filtered = [
+            j for j in filtered
+            if not any(m in (j.location or "").lower() for m in _INTL_MARKERS)
+        ]
+
+    return filtered
+
+
 async def _run_search(task_id: str, query: str, resume_text: str | None, skip_scoring: bool = False) -> None:
-    """Background task: parse → search → score → report."""
+    """Background task: parse (regex→LLM on miss) → filter cached corpus → report."""
     import os as _os
     from urllib.parse import quote as _quote
     from .report.excel import generate_report
@@ -266,88 +315,23 @@ async def _run_search(task_id: str, query: str, resume_text: str | None, skip_sc
             return
 
         # Phase 1: parse query
-        from .job_cache import (
-            cache_key as _cache_key,
-            get as _cache_get,
-            store as _cache_store,
-            get_scored as _get_scored,
-            get_scored_fuzzy as _get_scored_fuzzy,
-            store_scored as _store_scored,
-            _compute_hot_skills_from_jobs,
-            get_all_cached_jobs,
-        )
+        from .job_cache import get_all_cached_jobs
+        from .scoring.engine import create_unscored_results
         from .nlp.parser import _fallback_parse
 
-        # ── Fast path: try regex parser first, check scored cache ────────────
-        # Avoids LLM call (~1-3s) for queries that hit the seed cache.
-        fast_parsed = _fallback_parse(query)
-        cache_result = _get_scored_fuzzy(fast_parsed)
+        # ── Parse: regex parser first (no LLM). Only fall back to the LLM
+        # parser if the cheap parse finds nothing in the cached corpus. ──
+        await update(TaskStatus.SEARCHING, "Searching cached jobs...")
+        parsed = _fallback_parse(query)
+        filtered = _filter_from_index(parsed, query)
 
-        if cache_result is None:
-            # Cache miss with fallback — now run the full LLM parser for better accuracy
+        if not filtered:
             await update(TaskStatus.PARSING, "Parsing your query...")
             parsed = await parse_query(query, resume_text)
-            task.parsed_query = parsed
-            _ck = _cache_key(parsed)
-            cache_result = _get_scored_fuzzy(parsed)
-        else:
-            # Cache hit without LLM — use fast_parsed directly
-            parsed = fast_parsed
-            task.parsed_query = parsed
-            _ck = _cache_key(parsed)
+            filtered = _filter_from_index(parsed, query)
 
-        # ── Phase 1: Filter from Master Cache (Global Search) ───────────────
-        await update(TaskStatus.SEARCHING, "Searching in-memory index...")
-
-        from .job_cache import search_index
-        from .scoring.engine import create_unscored_results, filter_jobs
-
-        # Search by parsed title words, not raw query text.
-        # Raw query contains location/filler words ("in usa", "jobs near me")
-        # that don't appear in job content and cause the AND to return far too
-        # few results (e.g. "software engineer in usa" → AND on "usa" = 18 hits).
-        index_query = " ".join(parsed.titles + parsed.title_variations) if parsed.titles else query
-        filtered = search_index(index_query)
+        task.parsed_query = parsed
         master_count = len(get_all_cached_jobs())
-
-        # Strip country-level location terms before filtering — job records store
-        # cities ("San Francisco, CA"), never countries, so "United States" / "USA"
-        # as a location would eliminate every result.
-        _BROAD_GEOS = frozenset({"united states", "usa", "us", "america", "united states of america"})
-        # Check raw query too — fallback parser often doesn't extract country-level geos
-        _query_words = set(query.lower().split())
-        had_broad_us = (
-            bool(_query_words & _BROAD_GEOS)
-            or "united states" in query.lower()
-            or "united states of america" in query.lower()
-        )
-        effective_locations = [l for l in parsed.locations if l.lower() not in _BROAD_GEOS]
-
-        # Apply semantic title/location filtering so keyword overlap doesn't
-        # return wrong-role jobs (e.g. "software director" should not yield
-        # Software Engineer results just because both share "software").
-        if filtered and (parsed.titles or effective_locations or parsed.exclude_keywords):
-            from dataclasses import replace as _dc_replace
-            import copy as _copy
-            _parsed_copy = parsed.model_copy(update={"locations": effective_locations})
-            filtered = filter_jobs(filtered, _parsed_copy)
-
-        # When user asked for US jobs but broad geo was stripped, exclude jobs
-        # clearly located outside the US (India, Europe, etc.)
-        if had_broad_us and not effective_locations and filtered:
-            _INTL_MARKERS = {
-                "india", "bangalore", "bengaluru", "hyderabad", "pune", "mumbai",
-                "delhi", "chennai", "kolkata", "noida", "gurgaon",
-                "paris", "france", "london", "united kingdom", "germany", "berlin",
-                "munich", "amsterdam", "netherlands", "toronto", "canada",
-                "australia", "sydney", "melbourne", "singapore", "dubai", "uae",
-                "mexico", "brazil", "argentina", "poland", "warsaw", "prague",
-                "budapest", "bucharest", "kyiv", "ukraine",
-            }
-            filtered = [
-                j for j in filtered
-                if not any(m in (j.location or "").lower() for m in _INTL_MARKERS)
-            ]
 
         if filtered:
             logger.info("index hit for task %s: %d jobs found from %d total", 
@@ -379,7 +363,10 @@ async def _run_search(task_id: str, query: str, resume_text: str | None, skip_sc
                         query, master_count)
             task.total_jobs_found = 0
             task.status = TaskStatus.COMPLETE
-            task.progress_message = "No matching jobs found in the local index. Try a broader search terms."
+            task.progress_message = (
+                "I don't have that data cached yet. Try a broader search — "
+                "e.g. a role title like 'Software Engineer' or 'Data Engineer'."
+            )
             from .history import record_search
             record_search(query, 0, 0, ["master_cache"])
             return
@@ -792,23 +779,22 @@ async def download_report(task_id: str, user: AuthDep, query: str = ""):
         if matches:
             report_path = str(sorted(matches)[-1])
 
-    # 3. Vercel cross-instance fallback: regenerate from scored cache using query
+    # 3. Vercel cross-instance fallback: regenerate from the cached corpus
     if (not report_path or not Path(report_path).exists()) and query:
         try:
-            from .nlp.parser import parse_query
-            from .job_cache import get_scored_fuzzy
+            from .nlp.parser import _fallback_parse
+            from .scoring.engine import create_unscored_results
             from .report.excel import generate_report
-            parsed = await parse_query(query, None)
-            cache_result = get_scored_fuzzy(parsed)
-            if cache_result:
-                scored, _ = cache_result
+            parsed = _fallback_parse(query)
+            filtered = _filter_from_index(parsed, query)
+            if filtered:
+                unscored = create_unscored_results(filtered)
                 fake_task = SearchTask(task_id=task_id, query=query)
                 fake_task.status = TaskStatus.COMPLETE
-                fake_task.total_jobs_found = len(scored)
-                fake_task.total_jobs_scored = len(scored)
-                fake_task.sources_searched = ["scored_cache"]
+                fake_task.total_jobs_found = len(filtered)
+                fake_task.sources_searched = ["master_cache"]
                 _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-                rp = generate_report(scored, fake_task, _REPORTS_DIR)
+                rp = generate_report(unscored, fake_task, _REPORTS_DIR)
                 report_path = str(rp)
         except Exception as e:
             logger.warning("report regeneration failed: %s", e)
@@ -1079,13 +1065,7 @@ async def clear_cache(user: AuthDep):
 
 @app.post("/api/prefetch")
 async def trigger_prefetch(user: AuthDep):
-    """Manually trigger a prefetch cycle (runs in background)."""
-    from .config import get_settings
-    settings = get_settings()
-    from .prefetch import run_prefetch_cycle, _DEFAULT_QUERIES
-    queries = (
-        [q.strip() for q in settings.prefetch_queries.split(",") if q.strip()]
-        if settings.prefetch_queries else _DEFAULT_QUERIES
-    )
-    asyncio.create_task(run_prefetch_cycle(queries, stagger_seconds=20.0))
-    return {"status": "started", "queries": queries}
+    """Manually trigger a corpus prefetch (runs in background)."""
+    from .prefetch import run_prefetch_cycle
+    asyncio.create_task(run_prefetch_cycle())
+    return {"status": "started"}

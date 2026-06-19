@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     min_fit_score: float = 0.7
     usajobs_api_key: str = ""
 
+    # Adzuna aggregator API (free dev tier — https://developer.adzuna.com)
+    adzuna_app_id: str = ""
+    adzuna_app_key: str = ""
+    adzuna_country: str = "us"
+    adzuna_max_pages: int = 5
+
     # Rate limits
     search_rate_limit: int = 10      # searches/hour per user
     source_rate_limit: int = 60      # calls/minute per source
@@ -62,7 +68,7 @@ class Settings(BaseSettings):
         Path("/tmp/jobsgrep") if os.environ.get("VERCEL") else Path.home() / ".jobsgrep"
     )
 
-    @field_validator("groq_api_key", "gemini_api_key", "jobsgrep_access_token", "usajobs_api_key", "push_token", mode="before")
+    @field_validator("groq_api_key", "gemini_api_key", "jobsgrep_access_token", "usajobs_api_key", "push_token", "adzuna_app_id", "adzuna_app_key", mode="before")
     @classmethod
     def strip_api_keys(cls, v):
         """Strip whitespace from API keys and tokens to prevent 401 errors."""
@@ -179,6 +185,22 @@ SOURCE_REGISTRY: dict[str, DataSourceMeta] = {
         rate_limit=RateLimit(calls_per_minute=10, calls_per_hour=500),
         tos_url="https://developer.usajobs.gov/terms",
         description="USAJobs official government job board API",
+    ),
+    "smartrecruiters": DataSourceMeta(
+        name="smartrecruiters",
+        source_type=DataSourceType.PUBLIC_API,
+        enabled_modes=_ALL_MODES,
+        rate_limit=RateLimit(calls_per_minute=60, calls_per_hour=1000),
+        tos_url="https://developers.smartrecruiters.com",
+        description="SmartRecruiters public Posting API (no auth required)",
+    ),
+    "adzuna": DataSourceMeta(
+        name="adzuna",
+        source_type=DataSourceType.OFFICIAL_API,
+        enabled_modes=_ALL_MODES,
+        rate_limit=RateLimit(calls_per_minute=25, calls_per_hour=250),
+        tos_url="https://developer.adzuna.com/terms",
+        description="Adzuna licensed aggregator API (free dev key required)",
     ),
     "jobspy": DataSourceMeta(
         name="jobspy",
