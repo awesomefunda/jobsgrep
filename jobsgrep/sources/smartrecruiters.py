@@ -34,7 +34,11 @@ class SmartRecruitersSource(BaseSource):
     async def fetch_jobs(self, query: ParsedQuery) -> list[RawJob]:
         self._check_allowed()
 
-        companies = list(dict.fromkeys(DEFAULT_COMPANIES + [
+        from ..discovery.company_list import get_mapping_cache
+        cache = get_mapping_cache()
+        mapped = [m.smartrecruiters_slug for m in cache.values() if m.smartrecruiters_slug]
+
+        companies = list(dict.fromkeys(DEFAULT_COMPANIES + mapped + [
             c.strip() for c in query.target_companies
         ]))
 

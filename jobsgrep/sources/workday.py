@@ -24,6 +24,78 @@ WORKDAY_TARGETS = [
         "career_site": "External",
         "company_name": "Intel",
     },
+    {
+        "host": "broadcom.wd1.myworkdayjobs.com",
+        "tenant": "broadcom",
+        "career_site": "External_Career",
+        "company_name": "Broadcom",
+    },
+    {
+        "host": "qualcomm.wd1.myworkdayjobs.com",
+        "tenant": "qualcomm",
+        "career_site": "External",
+        "company_name": "Qualcomm",
+    },
+    {
+        "host": "micron.wd1.myworkdayjobs.com",
+        "tenant": "micron",
+        "career_site": "External",
+        "company_name": "Micron",
+    },
+    {
+        "host": "zillowgroup.wd5.myworkdayjobs.com",
+        "tenant": "zillowgroup",
+        "career_site": "Zillow_Careers",
+        "company_name": "Zillow",
+    },
+    {
+        "host": "dataminr.wd1.myworkdayjobs.com",
+        "tenant": "dataminr",
+        "career_site": "Dataminr_Careers",
+        "company_name": "Dataminr",
+    },
+    {
+        "host": "uber.wd1.myworkdayjobs.com",
+        "tenant": "uber",
+        "career_site": "External",
+        "company_name": "Uber",
+    },
+    {
+        "host": "salesforce.wd1.myworkdayjobs.com",
+        "tenant": "salesforce",
+        "career_site": "External_Career_Site",
+        "company_name": "Salesforce",
+    },
+    {
+        "host": "analog.wd1.myworkdayjobs.com",
+        "tenant": "analog",
+        "career_site": "External",
+        "company_name": "Analog Devices",
+    },
+    {
+        "host": "appliedmaterials.wd1.myworkdayjobs.com",
+        "tenant": "appliedmaterials",
+        "career_site": "External",
+        "company_name": "Applied Materials",
+    },
+    {
+        "host": "lam.wd1.myworkdayjobs.com",
+        "tenant": "lam",
+        "career_site": "External",
+        "company_name": "Lam Research",
+    },
+    {
+        "host": "asml.wd1.myworkdayjobs.com",
+        "tenant": "asml",
+        "career_site": "External",
+        "company_name": "ASML",
+    },
+    {
+        "host": "texasinstruments.wd1.myworkdayjobs.com",
+        "tenant": "texasinstruments",
+        "career_site": "External",
+        "company_name": "Texas Instruments",
+    },
 ]
 
 
@@ -49,6 +121,24 @@ class WorkdaySource(BaseSource):
     async def fetch_jobs(self, query: ParsedQuery) -> list[RawJob]:
         self._check_allowed()
 
+        from ..discovery.company_list import get_mapping_cache
+        cache = get_mapping_cache()
+        dynamic_targets = []
+        for m in cache.values():
+            if m.workday_host and m.workday_tenant and m.workday_career_site:
+                dynamic_targets.append({
+                    "host": m.workday_host,
+                    "tenant": m.workday_tenant,
+                    "career_site": m.workday_career_site,
+                    "company_name": m.company,
+                })
+
+        targets = list(WORKDAY_TARGETS)
+        seen_hosts = {t["host"].lower() for t in targets}
+        for dt in dynamic_targets:
+            if dt["host"].lower() not in seen_hosts:
+                targets.append(dt)
+
         results: list[RawJob] = []
         sem = asyncio.Semaphore(3)
 
@@ -56,7 +146,7 @@ class WorkdaySource(BaseSource):
             async with sem:
                 return await self._fetch_company_jobs(target, query)
 
-        tasks = [fetch_company(t) for t in WORKDAY_TARGETS]
+        tasks = [fetch_company(t) for t in targets]
         batches = await asyncio.gather(*tasks, return_exceptions=True)
         for b in batches:
             if isinstance(b, list):
@@ -73,8 +163,8 @@ class WorkdaySource(BaseSource):
         jobs: list[RawJob] = []
         seen: set[str] = set()
 
-        # Fetch up to 5 pages (limit 20 per page)
-        for page in range(5):
+        # Fetch up to 25 pages (limit 20 per page)
+        for page in range(25):
             offset = page * 20
             payload = {
                 "appliedFacets": {},

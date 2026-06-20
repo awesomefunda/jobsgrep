@@ -35,8 +35,9 @@ async def test_workday_source_fetch():
         query = ParsedQuery()
         jobs = await source.fetch_jobs(query)
         
-        # There are 2 companies targetted (Nvidia, Intel), so 2 jobs should be returned
-        assert len(jobs) == 2
+        # We check that we received jobs for each target company
+        from jobsgrep.sources.workday import WORKDAY_TARGETS
+        assert len(jobs) == len(WORKDAY_TARGETS)
         assert jobs[0].title == "Senior GPU Architect"
         assert jobs[0].company == "Nvidia"
         assert jobs[0].location == "Santa Clara, CA"

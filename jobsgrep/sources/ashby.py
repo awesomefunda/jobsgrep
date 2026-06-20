@@ -21,7 +21,7 @@ DEFAULT_BOARDS = [
     "openai", "elevenlabs", "notion", "cohere", "ramp", "vanta", "replit",
     "perplexity", "baseten", "supabase", "watershed", "modal", "linear",
     "astronomer", "posthog", "runway", "hex", "mercury", "deel", "clay",
-    "sourcegraph", "retool", "wandb", "census", "mux", "together",
+    "sourcegraph", "retool", "wandb", "census", "mux", "together", "langchain",
 ]
 
 _SALARY_RE = re.compile(r"\$[\d,]+(?:K|k)?(?:\s*[-–]\s*\$[\d,]+(?:K|k)?)?")
@@ -43,7 +43,11 @@ class AshbySource(BaseSource):
     async def fetch_jobs(self, query: ParsedQuery) -> list[RawJob]:
         self._check_allowed()
 
-        boards = list(dict.fromkeys(DEFAULT_BOARDS + [
+        from ..discovery.company_list import get_mapping_cache
+        cache = get_mapping_cache()
+        mapped = [m.ashby_slug for m in cache.values() if m.ashby_slug]
+
+        boards = list(dict.fromkeys(DEFAULT_BOARDS + mapped + [
             c.lower().replace(" ", "-") for c in query.target_companies
         ]))
 

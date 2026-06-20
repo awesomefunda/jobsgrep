@@ -30,11 +30,9 @@ _CORPUS_TERMS = [
     "engineering manager", "product manager",
     "asic design engineer", "fpga engineer", "hardware engineer",
     "rtl design engineer", "embedded engineer",
-    # Target major software & hardware companies
-    "Apple software engineer", "Google software engineer",
-    "Microsoft software engineer", "Meta software engineer",
-    "Amazon software engineer", "Netflix software engineer",
-    "Apple hardware engineer", "Nvidia software engineer",
+    "solutions architect", "sales engineer", "firmware engineer",
+    "verification engineer", "physical design engineer", "analog engineer",
+    "rf engineer", "systems engineer", "cloud security engineer",
 ]
 
 

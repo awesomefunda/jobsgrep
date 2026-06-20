@@ -165,6 +165,10 @@ class ATSMapping(BaseModel):
     ashby_slug: str | None = None
     recruitee_slug: str | None = None
     workable_slug: str | None = None
+    smartrecruiters_slug: str | None = None
+    workday_host: str | None = None
+    workday_tenant: str | None = None
+    workday_career_site: str | None = None
     website: str | None = None
     is_yc: bool = False
     team_size: str | None = None

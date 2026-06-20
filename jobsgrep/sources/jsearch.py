@@ -29,6 +29,15 @@ _CORPUS_TERMS = [
     "Microsoft software engineer", "Meta software engineer",
     "Amazon software engineer", "Netflix software engineer",
     "Apple hardware engineer", "Nvidia software engineer",
+    "Nvidia hardware engineer", "Intel hardware engineer",
+    "AMD hardware engineer", "Google hardware engineer",
+    "Microsoft hardware engineer", "Meta hardware engineer",
+    "Amazon hardware engineer", "Intel software engineer",
+    "AMD software engineer", "Qualcomm hardware engineer",
+    "Broadcom hardware engineer", "Atlassian software engineer",
+    "Dropbox software engineer", "Toast software engineer",
+    "Upstart software engineer", "Coupang software engineer",
+    "Uber software engineer", "Salesforce software engineer",
 ]
 
 

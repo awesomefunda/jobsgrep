@@ -32,6 +32,8 @@ DEFAULT_BOARDS = [
     "airbnb", "lyft", "pinterest", "reddit", "square", "spotify",
     "coinbase", "rippling", "instacart", "gusto", "anduril",
     "perplexity", "ponyai", "nuro", "cruise", "waymo",
+    "hightouch", "dropbox", "toast", "upstart", "coupang", "upwork",
+    "webflow", "warp", "tailscale",
 ]
 
 
@@ -43,8 +45,12 @@ class GreenhouseSource(BaseSource):
     async def fetch_jobs(self, query: ParsedQuery) -> list[RawJob]:
         self._check_allowed()
 
-        # Combine default boards with any query-specified companies
-        boards = list(dict.fromkeys(DEFAULT_BOARDS + [
+        from ..discovery.company_list import get_mapping_cache
+        cache = get_mapping_cache()
+        mapped = [m.greenhouse_slug for m in cache.values() if m.greenhouse_slug]
+
+        # Combine default boards with mapped and query-specified companies
+        boards = list(dict.fromkeys(DEFAULT_BOARDS + mapped + [
             c.lower().replace(" ", "-") for c in query.target_companies
         ]))
 

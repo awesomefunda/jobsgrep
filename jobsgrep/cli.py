@@ -26,8 +26,9 @@ def main() -> None:
     p_search.add_argument("--no-score", action="store_true", help="Skip AI scoring")
 
     # discover
-    p_discover = sub.add_parser("discover", help="Run ATS slug discovery for all YC companies")
+    p_discover = sub.add_parser("discover", help="Run ATS slug discovery for companies")
     p_discover.add_argument("--limit", type=int, default=500)
+    p_discover.add_argument("--seed-file", default=None, help="File with company names (one per line)")
 
     # sources
     sub.add_parser("sources", help="List enabled sources for current mode")
@@ -35,11 +36,13 @@ def main() -> None:
     # health
     sub.add_parser("health", help="Check all source APIs are responding")
 
-    # add-company
     p_add = sub.add_parser("add-company", help="Manually add a company ATS mapping")
     p_add.add_argument("name")
-    p_add.add_argument("ats", choices=["greenhouse", "lever", "ashby", "recruitee", "workable"])
-    p_add.add_argument("slug")
+    p_add.add_argument("ats", choices=["greenhouse", "lever", "ashby", "recruitee", "workable", "smartrecruiters", "workday"])
+    p_add.add_argument("slug", nargs="?", default="")
+    p_add.add_argument("--host", default=None, help="Workday host, e.g. company.wd1.myworkdayjobs.com")
+    p_add.add_argument("--tenant", default=None, help="Workday tenant name")
+    p_add.add_argument("--site", default=None, help="Workday site name, e.g. External")
 
     # run-prefetch
     sub.add_parser(
@@ -149,10 +152,21 @@ async def _cmd_search(args) -> None:
 
 
 async def _cmd_discover(args) -> None:
-    from .discovery.company_list import discover_from_yc
-    print(f"Discovering ATS slugs for up to {args.limit} YC companies...")
-    count = await discover_from_yc(limit=args.limit)
-    print(f"Done. {count} new mappings found.")
+    if args.seed_file:
+        from pathlib import Path
+        from .discovery.company_list import discover_from_file
+        seed_path = Path(args.seed_file)
+        if not seed_path.exists():
+            print(f"Error: seed file '{args.seed_file}' does not exist.")
+            sys.exit(1)
+        print(f"Discovering ATS slugs for companies in '{args.seed_file}'...")
+        count = await discover_from_file(seed_path)
+        print(f"Done. {count} new mappings found.")
+    else:
+        from .discovery.company_list import discover_from_yc
+        print(f"Discovering ATS slugs for up to {args.limit} YC companies...")
+        count = await discover_from_yc(limit=args.limit)
+        print(f"Done. {count} new mappings found.")
 
 
 def _cmd_sources() -> None:
@@ -215,7 +229,7 @@ async def _cmd_export(args) -> None:
         sys.exit(1)
 
     out = export_segmented(jobs, Path(args.out))
-    print(f"\nExported {len(jobs)} jobs → {out}")
+    print(f"\nExported {len(jobs)} jobs -> {out}")
 
 
 def _cmd_add_company(args) -> None:
@@ -223,9 +237,15 @@ def _cmd_add_company(args) -> None:
     from .models import ATSMapping
 
     mapping = ATSMapping(company=args.name)
-    setattr(mapping, f"{args.ats}_slug", args.slug)
+    if args.ats == "workday":
+        mapping.workday_host = args.host
+        mapping.workday_tenant = args.tenant
+        mapping.workday_career_site = args.site
+        print(f"Added: {args.name} -> workday (host={args.host}, tenant={args.tenant}, site={args.site})")
+    else:
+        setattr(mapping, f"{args.ats}_slug", args.slug if args.slug else None)
+        print(f"Added: {args.name} -> {args.ats}:{args.slug}")
     upsert_mapping(mapping)
-    print(f"Added: {args.name} → {args.ats}:{args.slug}")
 
 
 async def _cmd_push(args) -> None:
@@ -250,7 +270,7 @@ async def _cmd_push(args) -> None:
     token  = args.token
     url    = f"{server}/api/import"
 
-    print(f"\nPushing {len(entries)} cache entr{'y' if len(entries)==1 else 'ies'} → {server}\n")
+    print(f"\nPushing {len(entries)} cache entr{'y' if len(entries)==1 else 'ies'} -> {server}\n")
 
     pushed = 0
     skipped = 0

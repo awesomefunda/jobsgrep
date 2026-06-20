@@ -62,6 +62,9 @@ _ROLE_FAMILIES: list[tuple[str, list[str]]] = [
         "dft", "place and route", "circuit design", "rf engineer",
         "signal integrity", "power electronics", "board design",
         "firmware engineer", "embedded hardware",
+        "hardware", "gpu", "cpu", "soc", "microarchitect", "microarchitecture",
+        "gpu architect", "cpu architect", "hardware architect",
+        "silicon architect", "asic architect", "soc architect",
     ]),
     ("Design", [
         "ux designer", "ui designer", "product designer", "ux/ui",

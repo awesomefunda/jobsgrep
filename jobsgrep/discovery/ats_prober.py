@@ -98,6 +98,28 @@ async def probe_company(
             pass
         return False
 
+    async def try_recruitee(slug: str) -> bool:
+        url = f"https://{slug}.recruitee.com/api/offers"
+        try:
+            r = await client.get(url, timeout=ATS_PROBE_TIMEOUT)
+            if r.status_code == 200 and r.json().get("offers") is not None:
+                mapping.recruitee_slug = slug
+                return True
+        except Exception:
+            pass
+        return False
+
+    async def try_workable(slug: str) -> bool:
+        url = f"https://apply.workable.com/api/v1/widget/accounts/{slug}"
+        try:
+            r = await client.get(url, timeout=ATS_PROBE_TIMEOUT)
+            if r.status_code == 200 and r.json().get("jobs") is not None:
+                mapping.workable_slug = slug
+                return True
+        except Exception:
+            pass
+        return False
+
     for slug in slugs:
         await asyncio.sleep(0.1)  # gentle rate limiting
         tasks = []
@@ -107,9 +129,13 @@ async def probe_company(
             tasks.append(try_lever(slug))
         if not mapping.ashby_slug:
             tasks.append(try_ashby(slug))
+        if not mapping.recruitee_slug:
+            tasks.append(try_recruitee(slug))
+        if not mapping.workable_slug:
+            tasks.append(try_workable(slug))
         if tasks:
             await asyncio.gather(*tasks)
-        if mapping.greenhouse_slug and mapping.lever_slug and mapping.ashby_slug:
+        if mapping.greenhouse_slug and mapping.lever_slug and mapping.ashby_slug and mapping.recruitee_slug and mapping.workable_slug:
             break
 
     return mapping

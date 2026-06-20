@@ -23,7 +23,11 @@ class RecruiteeSource(BaseSource):
     async def fetch_jobs(self, query: ParsedQuery) -> list[RawJob]:
         self._check_allowed()
 
-        boards = list(dict.fromkeys(DEFAULT_BOARDS + [
+        from ..discovery.company_list import get_mapping_cache
+        cache = get_mapping_cache()
+        mapped = [m.recruitee_slug for m in cache.values() if m.recruitee_slug]
+
+        boards = list(dict.fromkeys(DEFAULT_BOARDS + mapped + [
             c.lower().replace(" ", "") for c in query.target_companies
         ]))
 

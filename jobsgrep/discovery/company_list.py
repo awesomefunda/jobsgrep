@@ -63,6 +63,10 @@ def upsert_mapping(mapping: ATSMapping) -> None:
         "ashby_slug": mapping.ashby_slug or existing.get("ashby_slug"),
         "recruitee_slug": mapping.recruitee_slug or existing.get("recruitee_slug"),
         "workable_slug": mapping.workable_slug or existing.get("workable_slug"),
+        "smartrecruiters_slug": mapping.smartrecruiters_slug or existing.get("smartrecruiters_slug"),
+        "workday_host": mapping.workday_host or existing.get("workday_host"),
+        "workday_tenant": mapping.workday_tenant or existing.get("workday_tenant"),
+        "workday_career_site": mapping.workday_career_site or existing.get("workday_career_site"),
         "website": mapping.website or existing.get("website"),
         "is_yc": mapping.is_yc or existing.get("is_yc", False),
         "team_size": mapping.team_size or existing.get("team_size"),
@@ -106,4 +110,38 @@ async def discover_from_yc(limit: int = 500) -> int:
         await asyncio.gather(*[probe_one(c) for c in to_probe])
 
     logger.info("discovery complete: %d new ATS mappings found", found)
+    return found
+
+
+async def discover_from_file(file_path: Path) -> int:
+    """Probe companies listed in a file (one name per line) and save mappings."""
+    if not file_path.exists():
+        logger.warning("Seed file %s does not exist", file_path)
+        return 0
+    lines = file_path.read_text(encoding="utf-8").splitlines()
+    company_names = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
+
+    settings = get_settings()
+    existing = get_mapping_cache()
+    to_probe = [name for name in company_names if name.lower() not in existing]
+    
+    logger.info("Probing %d companies from seed file...", len(to_probe))
+    sem = asyncio.Semaphore(CONCURRENT_PROBES)
+    found = 0
+
+    async with httpx.AsyncClient(headers={"User-Agent": settings.user_agent}) as client:
+        async def probe_one(name: str) -> None:
+            nonlocal found
+            async with sem:
+                mapping = await probe_company(name, client, settings)
+                if (mapping.greenhouse_slug or mapping.lever_slug or mapping.ashby_slug or 
+                        mapping.recruitee_slug or mapping.workable_slug or mapping.smartrecruiters_slug):
+                    upsert_mapping(mapping)
+                    found += 1
+                else:
+                    logger.debug("No ATS found for: %s", name)
+
+        await asyncio.gather(*[probe_one(n) for n in to_probe])
+
+    logger.info("File-based discovery complete: %d new ATS mappings found", found)
     return found
