@@ -30,6 +30,11 @@ _CORPUS_TERMS = [
     "engineering manager", "product manager",
     "asic design engineer", "fpga engineer", "hardware engineer",
     "rtl design engineer", "embedded engineer",
+    # Target major software & hardware companies
+    "Apple software engineer", "Google software engineer",
+    "Microsoft software engineer", "Meta software engineer",
+    "Amazon software engineer", "Netflix software engineer",
+    "Apple hardware engineer", "Nvidia software engineer",
 ]
 
 
@@ -50,8 +55,12 @@ class JobSpySource(BaseSource):
         results_wanted = self.settings.jobspy_results_per_term
         hours_old = self.settings.jobspy_hours_old
 
-        # Corpus mode (no titles) → sweep broad terms; otherwise use the query.
-        terms = (query.titles + query.title_variations)[:4] if query.titles else _CORPUS_TERMS
+        if query.titles:
+            terms = (query.titles + query.title_variations)[:4]
+        elif self.settings.prefetch_queries:
+            terms = [t.strip() for t in self.settings.prefetch_queries.split(",") if t.strip()]
+        else:
+            terms = _CORPUS_TERMS
 
         logger.info("jobspy: scraping %d terms across %s", len(terms), sites)
         all_jobs: list[RawJob] = []

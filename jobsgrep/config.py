@@ -271,6 +271,14 @@ SOURCE_REGISTRY: dict[str, DataSourceMeta] = {
         tos_url="https://www.teamblind.com",
         description="TeamBlind job board via encrypted REST API — LOCAL + PRIVATE modes",
     ),
+    "workday": DataSourceMeta(
+        name="workday",
+        source_type=DataSourceType.PUBLIC_API,
+        enabled_modes=_ALL_MODES,
+        rate_limit=RateLimit(calls_per_minute=30, calls_per_hour=300),
+        tos_url="",
+        description="Workday public client-side jobs API (Nvidia, AMD, Intel)",
+    ),
 }
 
 

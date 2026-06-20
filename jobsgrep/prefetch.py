@@ -37,7 +37,7 @@ CORPUS_LABEL = "All tech jobs (corpus)"
 CORPUS_SOURCE_NAMES = [
     "greenhouse", "lever", "ashby", "recruitee", "workable",
     "smartrecruiters", "adzuna", "jsearch", "hn_hiring",
-    "yc_companies", "jobspy",
+    "yc_companies", "jobspy", "workday",
 ]
 
 
@@ -45,7 +45,7 @@ CORPUS_SOURCE_NAMES = [
 # date fields mean "last modified", not "still open", so we never age them out.
 _LIVE_LISTING_SOURCES = (
     "greenhouse", "lever", "ashby", "recruitee", "workable",
-    "smartrecruiters", "yc_companies",
+    "smartrecruiters", "yc_companies", "workday",
 )
 
 
@@ -98,6 +98,7 @@ async def fetch_corpus() -> int:
     from .sources.adzuna import AdzunaSource
     from .sources.jsearch import JSearchSource
     from .sources.jobspy_source import JobSpySource
+    from .sources.workday import WorkdaySource
 
     match_all = ParsedQuery()  # all fields default to empty / False
     enabled = get_enabled_sources()
@@ -114,6 +115,7 @@ async def fetch_corpus() -> int:
         "hn_hiring": HNHiringSource(),
         "yc_companies": YCCompaniesSource(),
         "jobspy": JobSpySource(),
+        "workday": WorkdaySource(),
     }
 
     async def run_source(name: str, source):

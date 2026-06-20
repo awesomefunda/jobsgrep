@@ -59,3 +59,55 @@ def test_keyword_match_excludes():
 
     assert src._keyword_match(job_ok, query) is True
     assert src._keyword_match(job_bad, query) is False
+
+
+def test_jsearch_prefetch_queries_override():
+    from jobsgrep.sources.jsearch import JSearchSource
+    from jobsgrep.models import ParsedQuery
+    from unittest.mock import patch, MagicMock, AsyncMock
+
+    source = JSearchSource()
+    source.settings = MagicMock()
+    source.settings.jsearch_api_key = "test_key"
+    source.settings.jsearch_country = "us"
+    source.settings.jsearch_num_pages = 1
+    source.settings.prefetch_queries = "Test Query 1, Test Query 2"
+
+    with patch.object(source, "_fetch_term", new_callable=AsyncMock) as mock_fetch:
+        mock_fetch.return_value = []
+        import asyncio
+        asyncio.run(source.fetch_jobs(ParsedQuery()))
+        
+        called_terms = [call.args[0] for call in mock_fetch.call_args_list]
+        assert "Test Query 1" in called_terms
+        assert "Test Query 2" in called_terms
+
+
+def test_jobspy_prefetch_queries_override():
+    from jobsgrep.sources.jobspy_source import JobSpySource
+    from jobsgrep.models import ParsedQuery
+    from unittest.mock import patch, MagicMock, AsyncMock
+
+    source = JobSpySource()
+    source.settings = MagicMock()
+    source.settings.jobspy_sites = "indeed,google"
+    source.settings.jobspy_results_per_term = 10
+    source.settings.jobspy_hours_old = 24
+    source.settings.jobspy_location = "United States"
+    source.settings.prefetch_queries = "Test Query 3, Test Query 4"
+
+    # We patch jobspy scrape_jobs to not import jobspy
+    with patch("jobspy.scrape_jobs") as mock_scrape:
+        with patch("asyncio.get_event_loop") as mock_loop:
+            mock_executor = AsyncMock()
+            mock_loop.return_value.run_in_executor = mock_executor
+            
+            import asyncio
+            asyncio.run(source.fetch_jobs(ParsedQuery()))
+            
+            # Verify the call was made for each term
+            assert mock_executor.call_count == 2
+            called_terms = [call.args[1].__defaults__[0] for call in mock_executor.call_args_list]
+            assert "Test Query 3" in called_terms
+            assert "Test Query 4" in called_terms
+

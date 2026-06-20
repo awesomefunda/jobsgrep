@@ -24,6 +24,11 @@ _CORPUS_TERMS = [
     "frontend engineer", "backend engineer", "engineering manager",
     "product manager", "asic design engineer", "fpga engineer",
     "hardware engineer", "rtl design engineer",
+    # Target major software & hardware companies
+    "Apple software engineer", "Google software engineer",
+    "Microsoft software engineer", "Meta software engineer",
+    "Amazon software engineer", "Netflix software engineer",
+    "Apple hardware engineer", "Nvidia software engineer",
 ]
 
 
@@ -44,7 +49,13 @@ class JSearchSource(BaseSource):
         num_pages = max(1, self.settings.jsearch_num_pages)
         headers = {"X-RapidAPI-Key": key, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"}
 
-        terms = (query.titles + query.title_variations)[:4] if query.titles else _CORPUS_TERMS
+        if query.titles:
+            terms = (query.titles + query.title_variations)[:4]
+        elif self.settings.prefetch_queries:
+            terms = [t.strip() for t in self.settings.prefetch_queries.split(",") if t.strip()]
+        else:
+            terms = _CORPUS_TERMS
+
         location = query.locations[0] if query.locations else "United States"
 
         sem = asyncio.Semaphore(3)

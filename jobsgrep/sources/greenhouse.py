@@ -28,6 +28,10 @@ DEFAULT_BOARDS = [
     "flexport", "convoy", "project44",
     # High-paying AI companies (confirmed Greenhouse)
     "elevenlabs", "groq", "glean",
+    # Additional Famous Tech Companies & Unicorns
+    "airbnb", "lyft", "pinterest", "reddit", "square", "spotify",
+    "coinbase", "rippling", "instacart", "gusto", "anduril",
+    "perplexity", "ponyai", "nuro", "cruise", "waymo",
 ]
 
 
