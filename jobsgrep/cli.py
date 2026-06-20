@@ -197,8 +197,8 @@ async def _cmd_health() -> None:
                 status = "OK" if r.status_code == 200 else f"HTTP {r.status_code}"
             except Exception as e:
                 status = f"ERROR: {e}"
-            icon = "✓" if status == "OK" else "✗"
-            print(f"  {icon} {name:<20} {status}")
+            icon = "[OK]" if status == "OK" else "[ERR]"
+            print(f"  {icon:<5} {name:<20} {status}")
     print()
 
 
@@ -302,17 +302,17 @@ async def _cmd_push(args) -> None:
                 r = await client.post(url, json=body)
             if r.status_code == 200:
                 resp = r.json()
-                print(f"  ✓ {label:<40} {resp.get('stored', '?')} jobs stored")
+                print(f"  [OK] {label:<40} {resp.get('stored', '?')} jobs stored")
                 pushed += 1
             elif r.status_code == 403:
-                print(f"  ✗ {label:<40} 403 Forbidden — check --token")
+                print(f"  [ERR] {label:<40} 403 Forbidden - check --token")
                 skipped += 1
                 break   # No point retrying with wrong token
             else:
-                print(f"  ✗ {label:<40} HTTP {r.status_code}: {r.text[:120]}")
+                print(f"  [ERR] {label:<40} HTTP {r.status_code}: {r.text[:120]}")
                 skipped += 1
         except Exception as e:
-            print(f"  ✗ {label:<40} error: {e}")
+            print(f"  [ERR] {label:<40} error: {e}")
             skipped += 1
 
     if not args.dry_run:
