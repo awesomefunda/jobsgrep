@@ -45,12 +45,12 @@ def main():
             count = data.get("job_count", "?")
             label = data.get("label", src.stem)
             total_jobs += int(count) if isinstance(count, int) else 0
-            print(f"  ✓ {label:<45} {count} jobs")
+            print(f"  [OK] {label:<45} {count} jobs")
         except Exception:
-            print(f"  ✓ {src.name}")
+            print(f"  [OK] {src.name}")
         copied += 1
 
-    print(f"\nDone. {copied} file(s) → jobsgrep/seed_data/  ({total_jobs} total jobs)")
+    print(f"\nDone. {copied} file(s) -> jobsgrep/seed_data/  ({total_jobs} total jobs)")
     print("\nNext steps:")
     print("  git add jobsgrep/seed_data/")
     print("  git commit -m 'chore: refresh job seed data'")
