@@ -86,13 +86,14 @@ Keys are used for NL query parsing only (job ranking happens on the user's machi
 
 | Source | Type | Auth | Notes |
 |---|---|---|---|
-| Greenhouse | Public API | None | 50+ default boards, auto-discovers more |
-| Lever | Public API | None | 30+ default boards |
-| Ashby | Public API | None | 40+ default boards |
-| SmartRecruiters | Public API | None | Public Posting API, curated company list |
+| Greenhouse | Public API | None | Curated list + dynamically discovered boards |
+| Lever | Public API | None | Curated list + dynamically discovered boards |
+| Ashby | Public API | None | Curated list + dynamically discovered boards |
+| Workday | Public API / Scraper | None | Nvidia, Intel, Micron, Broadcom + dynamically configured boards |
+| SmartRecruiters | Public API | None | Curated list + dynamically discovered boards |
 | Adzuna | Licensed API | Free key | Aggregator — biggest legal breadth gain |
-| Recruitee | Public API | None | EU-focused companies |
-| Workable | Public API | None | EU-focused companies |
+| Recruitee | Public API | None | Curated list + dynamically discovered boards |
+| Workable | Public API | None | Curated list + dynamically discovered boards |
 | HN Who's Hiring | Official API | None | Algolia + Firebase, latest monthly thread |
 | YC Companies | Community OSS | None | 5,690 companies, probes their ATS boards |
 | USAJobs | Official API | API key | Free registration required |
@@ -123,22 +124,26 @@ GET    /api/history    List past searches
 DELETE /api/history    Clear history
 ```
 
-## ATS Slug Discovery
+## ATS Slug Discovery & Dynamic Ingestion
 
-Expand the list of companies searched by running the discovery script:
+Expand the list of companies searched by running the built-in CLI commands:
 
 ```bash
-# Probe up to 500 YC hiring companies
-python scripts/discover_companies.py --limit 500
+# 1. Probe up to 500 YC hiring companies automatically
+jobsgrep discover --limit 500
 
-# Also probe companies from your own CSV (requires a "name" column)
-python scripts/discover_companies.py --csv my_companies.csv
+# 2. Probe a list of custom company names from a flat file (one name per line)
+jobsgrep discover --seed-file my_companies.txt
 
-# Seed 50 well-known companies instantly (no network calls needed)
-python scripts/seed_companies.py
+# 3. Manually register a company with a known Greenhouse/Lever/Ashby/Recruitee/Workable slug
+jobsgrep add-company "Linear" ashby linear
+jobsgrep add-company "Hightouch" greenhouse hightouch
+
+# 4. Manually register a custom Workday company
+jobsgrep add-company "Nvidia" workday --host nvidia.wd5.myworkdayjobs.com --tenant nvidia --site NVIDIAExternalCareerSite
 ```
 
-Mappings are cached in `~/.jobsgrep/company_ats_mapping.json` and never removed on re-runs — only new slugs are added.
+Mappings are cached in `~/.jobsgrep/company_ats_mapping.json` and are preserved on runs. All dynamic targets are automatically queried during the weekly `run-prefetch` crawl.
 
 ## API Endpoints
 
