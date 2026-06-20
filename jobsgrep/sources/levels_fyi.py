@@ -143,7 +143,7 @@ class LevelsFYISource(BaseSource):
             params.append(("workArrangements[]", wa))
 
         try:
-            resp = await self.client.get(
+            resp = await self._get(
                 _API_URL,
                 params=params,
                 headers=self._LEVELS_HEADERS,

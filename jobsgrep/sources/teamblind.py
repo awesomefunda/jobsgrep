@@ -85,36 +85,6 @@ def _rsa_encrypt(hex_key: str) -> str:
         _rsa_key_cache.encrypt(hex_key.encode(), rsa_padding.PKCS1v15())
     ).decode()
 
-def _encrypted_fetch_sync(path: str, client_headers: dict) -> dict | None:
-    """Synchronous encrypted fetch — run in executor."""
-    import requests
-    hex_key        = os.urandom(32).hex()
-    encrypted_body = _sjcl_encrypt(hex_key, "{}")
-    enc_client_key = _rsa_encrypt(hex_key)
-
-    try:
-        resp = requests.post(
-            f"https://www.teamblind.com{path}",
-            data=json.dumps({"payload": encrypted_body, "encClientKey": enc_client_key}),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json, */*",
-                "Origin": "https://www.teamblind.com",
-                "Referer": "https://www.teamblind.com/jobs",
-                **client_headers,
-            },
-            timeout=20,
-        )
-        if resp.status_code != 200:
-            logger.debug("teamblind %s -> HTTP %d", path, resp.status_code)
-            return None
-        inner = json.loads(resp.text)
-        return json.loads(_sjcl_decrypt(hex_key, inner))
-    except Exception as e:
-        logger.debug("teamblind encrypted fetch failed: %s", e)
-        return None
-
-
 # ─── Source ──────────────────────────────────────────────────────────────────
 
 class TeamBlindSource(BaseSource):
@@ -124,13 +94,40 @@ class TeamBlindSource(BaseSource):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     }
 
+    async def _encrypted_fetch(self, path: str) -> dict | None:
+        """Encrypted API POST request — async, rate-limited and audited."""
+        hex_key        = os.urandom(32).hex()
+        encrypted_body = _sjcl_encrypt(hex_key, "{}")
+        enc_client_key = _rsa_encrypt(hex_key)
+
+        try:
+            resp = await self._post(
+                f"https://www.teamblind.com{path}",
+                content=json.dumps({"payload": encrypted_body, "encClientKey": enc_client_key}),
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, */*",
+                    "Origin": "https://www.teamblind.com",
+                    "Referer": "https://www.teamblind.com/jobs",
+                    **self._HEADERS,
+                },
+                timeout=20,
+            )
+            if resp.status_code != 200:
+                logger.debug("teamblind %s -> HTTP %d", path, resp.status_code)
+                return None
+            inner = json.loads(resp.text)
+            return json.loads(_sjcl_decrypt(hex_key, inner))
+        except Exception as e:
+            logger.debug("teamblind encrypted fetch failed: %s", e)
+            return None
+
     async def fetch_jobs(self, query: ParsedQuery) -> list[RawJob]:
         self._check_allowed()
 
         search_terms = list(dict.fromkeys((query.titles or []) + ["software engineer"]))[:3]
         jobs: list[RawJob] = []
         seen_ids: set[str] = set()
-        loop = asyncio.get_event_loop()
 
         for term in search_terms:
             for page in range(4):
@@ -139,10 +136,7 @@ class TeamBlindSource(BaseSource):
                 if query.remote_ok:
                     params += "&remoteOnly=true"
 
-                data = await loop.run_in_executor(
-                    None,
-                    lambda p=params: _encrypted_fetch_sync(f"/api/jobs?{p}", self._HEADERS),
-                )
+                data = await self._encrypted_fetch(f"/api/jobs?{params}")
                 if not data or "feeds" not in data:
                     break
 

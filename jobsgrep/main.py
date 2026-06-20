@@ -304,7 +304,12 @@ def _filter_from_index(parsed, query: str) -> list:
 
 
 async def _run_search(task_id: str, query: str, resume_text: str | None, skip_scoring: bool = False) -> None:
-    """Background task: parse (regex→LLM on miss) → filter cached corpus → report."""
+    """Background task: parse (regex→LLM on miss) → filter cached corpus → report.
+
+    Note: skip_scoring is kept for backwards compatibility but is ignored.
+    All search results are generated from cached corpus indexes directly;
+    ranking is offloaded to the user's own local LLM using the Excel template.
+    """
     import os as _os
     from urllib.parse import quote as _quote
     from .report.excel import generate_report

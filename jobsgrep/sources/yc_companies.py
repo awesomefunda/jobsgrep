@@ -24,18 +24,28 @@ class YCCompaniesSource(BaseSource):
         hiring = [c for c in companies if c.get("isHiring")]
         logger.info("yc_companies: %d companies, %d hiring", len(companies), len(hiring))
 
+        from .greenhouse import GreenhouseSource
+        from .lever import LeverSource
+
+        gh_source = GreenhouseSource()
+        lv_source = LeverSource()
+
         # For each hiring company, try their ATS boards
         jobs: list[RawJob] = []
         sem = asyncio.Semaphore(8)
 
         async def probe_company(company: dict) -> list[RawJob]:
             async with sem:
-                return await self._probe_ats(company, query)
+                return await self._probe_ats(company, query, gh_source, lv_source)
 
-        batches = await asyncio.gather(*[probe_company(c) for c in hiring[:300]], return_exceptions=True)
-        for b in batches:
-            if isinstance(b, list):
-                jobs.extend(b)
+        try:
+            batches = await asyncio.gather(*[probe_company(c) for c in hiring[:300]], return_exceptions=True)
+            for b in batches:
+                if isinstance(b, list):
+                    jobs.extend(b)
+        finally:
+            await gh_source.close()
+            await lv_source.close()
         return jobs
 
     async def _fetch_yc_companies(self) -> list[dict]:
@@ -47,7 +57,13 @@ class YCCompaniesSource(BaseSource):
             logger.warning("yc companies fetch failed: %s", e)
             return []
 
-    async def _probe_ats(self, company: dict, query: ParsedQuery) -> list[RawJob]:
+    async def _probe_ats(
+        self,
+        company: dict,
+        query: ParsedQuery,
+        gh_source: GreenhouseSource,
+        lv_source: LeverSource,
+    ) -> list[RawJob]:
         """Try Greenhouse and Lever slug variants for a YC company."""
         name: str = company.get("name", "")
         if not name:
@@ -55,9 +71,6 @@ class YCCompaniesSource(BaseSource):
 
         # Import here to avoid circular imports
         from ..discovery.ats_prober import derive_slug_variants
-        from .ashby import AshbySource
-        from .greenhouse import GreenhouseSource
-        from .lever import LeverSource
 
         slugs = derive_slug_variants(name)
 
@@ -71,7 +84,6 @@ class YCCompaniesSource(BaseSource):
             # Greenhouse
             if company_lower not in cache or cache[company_lower].greenhouse_slug is None:
                 try:
-                    gh_source = GreenhouseSource()
                     resp = await gh_source._get(
                         f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs"
                     )
@@ -86,7 +98,6 @@ class YCCompaniesSource(BaseSource):
 
             # Lever
             try:
-                lv_source = LeverSource()
                 resp = await lv_source._get(
                     f"https://api.lever.co/v0/postings/{slug}",
                     params={"mode": "json"},

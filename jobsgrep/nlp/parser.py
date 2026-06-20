@@ -182,7 +182,7 @@ _TITLE_CANONICAL = [
     (r"data\s+engineer",                                                    "Data Engineer"),
     (r"data\s+scientist",                                                   "Data Scientist"),
     (r"devops\s+engineer|sre\b|platform\s+engineer|infra\s+engineer",      "DevOps Engineer"),
-    (r"software\s+engineer|swe\b|sde\b",                                   "Software Engineer"),
+    (r"software\s+engineer|swe\b|sde\b|software\s+dev(?:elopment)?\b",       "Software Engineer"),
 ]
 
 
